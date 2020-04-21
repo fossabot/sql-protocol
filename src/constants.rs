@@ -637,3 +637,40 @@ pub const DEFAULT_SERVER_CAPABILITY: u32 = CapabilityClientLongPassword as u32 |
 
 pub const DEFAULT_SALT: &'static [u8; 20] = &[0x77, 0x63, 0x6a, 0x6d, 0x61, 0x22, 0x23, 0x27, // first part
     0x38, 0x26, 0x55, 0x58, 0x3b, 0x5d, 0x44, 0x78, 0x53, 0x73, 0x6b, 0x41];
+
+
+pub enum TLSVersion {
+    VersionTLS10 = 0x0301,
+    VersionTLS11 = 0x0302,
+    VersionTLS12 = 0x0303,
+    VersionTLS13 = 0x0304,
+    VersionSSL30 = 0x0300,
+}
+
+impl From<u64> for TLSVersion {
+    fn from(ver: u64) -> Self {
+        match ver {
+            0x0301 => TLSVersion::VersionTLS10,
+            0x0302 => TLSVersion::VersionTLS11,
+            0x0303 => TLSVersion::VersionTLS12,
+            0x0304 => TLSVersion::VersionTLS13,
+            0x0300 => TLSVersion::VersionSSL30,
+            _ => { panic!("Unexpected version") }
+        }
+    }
+}
+
+macro_rules! impl_from_d {
+    ($t:ty,$s:ty) => {
+        impl From<$t> for $s {
+            fn from(v: $t) -> Self{
+                (v as u64).into()
+            }
+        }
+    };
+}
+
+impl_from_d!(u8,TLSVersion);
+impl_from_d!(u16,TLSVersion);
+impl_from_d!(u32,TLSVersion);
+impl_from_d!(usize,TLSVersion);
