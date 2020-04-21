@@ -10,66 +10,83 @@ use crate::errors::{ProtoError, ProtoResult};
 
 use dakv_logger::prelude::*;
 use byteorder::{ReadBytesExt, LittleEndian};
+use crate::proto::packets::Packets;
 
 
 pub struct Connection {
     id: u32,
+    // User is the name used by the client to connect.
+    // It is set during the initial handshake.
+    user: String,
     greeting: Box<Greeting>,
     auth: Auth,
+    packets: Packets,
 }
 
 impl Connection {
     pub fn new(id: u32, server_version: String) -> Self {
         Connection {
             id,
+            user: "".to_string(),
             greeting: Greeting::new(id, server_version),
             auth: Auth::new(),
+            packets: Packets::new(),
         }
     }
 
     pub fn check_auth(&mut self, payload: &[u8]) -> ProtoResult<()> {
-        self.auth.parse_handshake(payload)
+        self.auth.parse_client_handshake_packet(payload, true)
+    }
+
+    pub fn pack_greeting(&mut self) {
+        let pkg = self.greeting.write_handshake_v10().unwrap();
+    }
+
+    pub fn unpack_auth(&mut self) -> ProtoResult<()> {
+        let payload = self.packets.next();
+        self.auth.parse_client_handshake_packet(payload.unwrap().as_slice(),true)?;
+        Ok(())
     }
 
     pub fn handle(&mut self, mut stream: TcpStream, handler: Arc<dyn Handler>) {
         info!("Read request ...");
+
+        self.packets.set_stream(stream);
         let mut buf = [0u8; 8192];
         let data = &[0u8; 1];
-        match stream.read(&mut buf) {
-            Ok(n) => {
-//                    info!("{}", std::str::from_utf8_unchecked(buf.as_ref()));
-            }
-            Err(err) => {
-                error!("{}", err);
-            }
-        }
+//        match stream.read(&mut buf) {
+//            Ok(n) => {
+////                    info!("{}", std::str::from_utf8_unchecked(buf.as_ref()));
+//            }
+//            Err(err) => {
+//                error!("{}", err);
+//            }
+//        }
 
-        stream.write(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n").unwrap();
+//        stream.write(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n").unwrap();
     }
 
     fn handle_next_command(&mut self, data: &[u8]) {
-        loop {
-            match data[0].into() {
-                PacketType::ComQuit => {
-                    info!("com quit");
-                    return;
-                }
-                PacketType::ComInitDb => {
-                    let db = parse_com_init_db(data);
-                    return;
-                }
-                PacketType::ComPing => {}
-                PacketType::ComQuery => {}
-                PacketType::ComStmtPrepare => {}
-                PacketType::ComStmtExecute => {}
-                PacketType::ComStmtReset => {}
-                PacketType::ComStmtClose => {}
-                _ => {
-                    let cmd: PacketType = data[0].into();
-                    let cmd_str: &'static str = cmd.into();
-                    error!("Unknown command {}", cmd_str);
-                    self.write_err_packet();
-                }
+        match data[0].into() {
+            PacketType::ComQuit => {
+                info!("com quit");
+                return;
+            }
+            PacketType::ComInitDb => {
+                let db = parse_com_init_db(data);
+                return;
+            }
+            PacketType::ComPing => {}
+            PacketType::ComQuery => {}
+            PacketType::ComStmtPrepare => {}
+            PacketType::ComStmtExecute => {}
+            PacketType::ComStmtReset => {}
+            PacketType::ComStmtClose => {}
+            _ => {
+                let cmd: PacketType = data[0].into();
+                let cmd_str: &'static str = cmd.into();
+                error!("Unknown command {}", cmd_str);
+                self.write_err_packet();
             }
         }
     }

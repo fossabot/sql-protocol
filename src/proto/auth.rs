@@ -24,7 +24,7 @@ pub struct Auth {
     max_packet_size: u32,
     capability_flags: u32,
     auth_response: Vec<u8>,
-    plugin_name: String,
+    auth_method: String,
     database: String,
     user: String,
 }
@@ -52,7 +52,7 @@ impl Auth {
             max_packet_size: 0,
             auth_response: vec![],
             capability_flags: 0,
-            plugin_name: "".to_string(),
+            auth_method: "".to_string(),
             database: "".to_string(),
             user: "".to_string(),
         }
@@ -117,7 +117,7 @@ impl Auth {
         buf
     }
 
-    pub fn parse_handshake(&mut self, payload: &[u8]) -> ProtoResult<()> {
+    pub fn parse_client_handshake_packet(&mut self, payload: &[u8], first: bool) -> ProtoResult<()> {
         let mut payload = Cursor::new(payload);
         // Parse client flag
         match payload.read_u32::<LittleEndian>() {
@@ -126,6 +126,13 @@ impl Auth {
                     return Err(ProtoError::ProtocolNotSupport);
                 }
                 self.capability_flags = client_flag;
+                if first {
+                    self.capability_flags = client_flag & (CapabilityFlag::CapabilityClientDeprecateEOF as u32 | CapabilityFlag::CapabilityClientFoundRows as u32)
+                }
+                // multi statements support
+                if client_flag & CapabilityFlag::CapabilityClientMultiStatements as u32 > 0 {
+                    self.capability_flags |= CapabilityFlag::CapabilityClientMultiStatements as u32;
+                }
             }
             Err(_) => {
                 return Err(ProtoError::ReadClientFlagError);
@@ -138,17 +145,28 @@ impl Auth {
         self.character_set = payload.read_u8()
             .map_err(|_| { ProtoError::ReadCharsetError })?;
         // Read 23 zeros
+        // todo Cursor skip
         let mut trailer = [0; 23];
         if payload.read(&mut trailer).map_err(|_| { ProtoError::ReadZeroError })? != trailer.len() {
             return Err(ProtoError::ReadZeroError);
         }
+        // todo tls server
         unsafe {
             // Parse user name
             payload.real_read_until(0x00, self.user.as_mut_vec())
                 .map_err(|_| { ProtoError::ReadUserError })?;
             // Parse auth response
             let mut auth_resp_len = 0;
-            if (self.capability_flags & CapabilityFlag::CapabilityClientSecureConnection as u32) != 0 {
+            if self.capability_flags & CapabilityFlag::CapabilityClientPluginAuthLenencClientData as u32 != 0 {
+                // todo u64 length
+                auth_resp_len = payload.read_u8()
+                    .map_err(|_| { ProtoError::ReadAuthResponseLengthError })? as usize;
+
+                let mut buffer = [0; 256];
+                payload.read(&mut buffer[..auth_resp_len])
+                    .map_err(|_| { ProtoError::ReadAuthResponseError })?;
+                self.auth_response.extend_from_slice(&buffer[..auth_resp_len]);
+            } else if (self.capability_flags & CapabilityFlag::CapabilityClientSecureConnection as u32) != 0 {
                 auth_resp_len = payload.read_u8()
                     .map_err(|_| { ProtoError::ReadAuthResponseLengthError })? as usize;
 
@@ -162,19 +180,23 @@ impl Auth {
                 self.auth_response.extend_from_slice(&buffer);
                 payload.read_u8().map_err(|_| { ProtoError::ReadAuthResponseError })?;
             }
-            // Parse database
-            if (self.capability_flags & CapabilityFlag::CapabilityClientConnectWithDB as u32) > 0 {
+            // Parse database name
+            if (self.capability_flags & CapabilityFlag::CapabilityClientConnectWithDB as u32) != 0 {
                 payload.real_read_until(0x00, self.database.as_mut_vec())
                     .map_err(|_| { ProtoError::ReadDatabaseError })?;
             }
             // Parse plugin name
-            if (self.capability_flags & CapabilityFlag::CapabilityClientPluginAuth as u32) > 0 {
-                payload.real_read_until(0x00, self.plugin_name.as_mut_vec())
+            if (self.capability_flags & CapabilityFlag::CapabilityClientPluginAuth as u32) != 0 {
+                payload.real_read_until(0x00, self.auth_method.as_mut_vec())
                     .map_err(|_| { ProtoError::ReadPluginError })?;
             }
-            // Also check the value order.
-            if self.plugin_name != String::from(MYSQL_NATIVE_PASSWORD) {
-                return Err(ProtoError::InvalidPluginError(self.plugin_name.clone()));
+            // JDBC sometimes send empty auth method but expect mysql_native_password
+            if self.auth_method.is_empty() {
+                self.auth_method = String::from(MYSQL_NATIVE_PASSWORD);
+            }
+            // Decode connection attributes
+            if self.capability_flags & CapabilityFlag::CapabilityClientConnAttr as u32 != 0 {
+                // todo decode connection attributes
             }
         }
         Ok(())
@@ -206,7 +228,7 @@ fn gen_native_password(password: String, salt: &[u8]) -> Vec<u8> {
 
 impl cmp::PartialEq for Auth {
     fn eq(&self, other: &Self) -> bool {
-        self.plugin_name == other.plugin_name
+        self.auth_method == other.auth_method
             && self.database == other.database
             && self.capability_flags == other.capability_flags
             && self.character_set == other.character_set
@@ -239,11 +261,11 @@ mod tests {
             0x76, 0x65, 0x5f, 0x70, 0x61, 0x73, 0x73, 0x77,
             0x6f, 0x72, 0x64, 0x00];
         let mut auth = Auth::new();
-        auth.parse_handshake(data).unwrap();
+        auth.parse_client_handshake_packet(data, false).unwrap();
         assert_eq!(auth.character_set, 33);
         assert_eq!(auth.max_packet_size, 16777216);
-        assert_eq!(auth.capability_flags, 33531533);
-        assert_eq!(auth.plugin_name, String::from(MYSQL_NATIVE_PASSWORD));
+//        assert_eq!(auth.capability_flags, 33531533);
+        assert_eq!(auth.auth_method, String::from(MYSQL_NATIVE_PASSWORD));
         assert_eq!(auth.database, "abc".to_string());
         assert_eq!(auth.user, "root".to_string());
         assert_eq!(auth.auth_response, vec![
@@ -256,26 +278,26 @@ mod tests {
     fn test_error() {
         let data = &[0x8d, 0xa6, 0xff];
         let mut auth = Auth::new();
-        match auth.parse_handshake(data) {
+        match auth.parse_client_handshake_packet(data, false) {
             Err(ProtoError::ReadClientFlagError) => {}
             _ => { panic!("Unexpected result"); }
         }
         let data = &[0x8d, 0xa6, 0xff, 0x01, 0x00, 0x00, 0x00];
         let mut auth = Auth::new();
-        match auth.parse_handshake(data) {
+        match auth.parse_client_handshake_packet(data, false) {
             Err(ProtoError::ReadMaxPacketSizeError) => {}
             _ => { panic!("Unexpected result"); }
         }
         let data = &[0x8d, 0xa6, 0xff, 0x01, 0x00, 0x00, 0x00, 0x01];
         let mut auth = Auth::new();
-        match auth.parse_handshake(data) {
+        match auth.parse_client_handshake_packet(data, false) {
             Err(ProtoError::ReadCharsetError) => {}
             _ => { panic!("Unexpected result"); }
         }
         let data = &[0x8d, 0xa6, 0xff, 0x01, 0x00, 0x00, 0x00, 0x01,
             0x21, 0x00, 0x00, 0x00];
         let mut auth = Auth::new();
-        match auth.parse_handshake(data) {
+        match auth.parse_client_handshake_packet(data, false) {
             Err(ProtoError::ReadZeroError) => {}
             _ => { panic!("Unexpected result"); }
         }
@@ -289,7 +311,7 @@ mod tests {
         expected.auth_response = gen_native_password(String::from("password"), DEFAULT_SALT);
         expected.database = "test_db".to_string();
         expected.user = "root".to_string();
-        expected.plugin_name = MYSQL_NATIVE_PASSWORD.to_string();
+        expected.auth_method = MYSQL_NATIVE_PASSWORD.to_string();
 
         let mut actual = Auth::new();
         let tmp = Auth::write_handshake_resp(
@@ -300,7 +322,7 @@ mod tests {
             DEFAULT_SALT,
             "test_db".to_string(),
         );
-        actual.parse_handshake(tmp.as_slice()).unwrap();
+        actual.parse_client_handshake_packet(tmp.as_slice(), false).unwrap();
         assert_eq!(actual, expected);
     }
 
@@ -312,7 +334,7 @@ mod tests {
         expected.auth_response = gen_native_password(String::from("password"), DEFAULT_SALT);
         expected.database = "".to_string();
         expected.user = "root".to_string();
-        expected.plugin_name = MYSQL_NATIVE_PASSWORD.to_string();
+        expected.auth_method = MYSQL_NATIVE_PASSWORD.to_string();
 
         let mut actual = Auth::new();
         let tmp = Auth::write_handshake_resp(
@@ -323,7 +345,7 @@ mod tests {
             DEFAULT_SALT,
             "".to_string(),
         );
-        actual.parse_handshake(tmp.as_slice()).unwrap();
+        actual.parse_client_handshake_packet(tmp.as_slice(), false).unwrap();
         assert_eq!(actual, expected);
     }
 
@@ -335,7 +357,7 @@ mod tests {
         expected.auth_response = gen_native_password(String::from(""), DEFAULT_SALT);
         expected.database = "db".to_string();
         expected.user = "root".to_string();
-        expected.plugin_name = MYSQL_NATIVE_PASSWORD.to_string();
+        expected.auth_method = MYSQL_NATIVE_PASSWORD.to_string();
 
         let mut actual = Auth::new();
         let tmp = Auth::write_handshake_resp(
@@ -346,7 +368,7 @@ mod tests {
             DEFAULT_SALT,
             "db".to_string(),
         );
-        actual.parse_handshake(tmp.as_slice()).unwrap();
+        actual.parse_client_handshake_packet(tmp.as_slice(), false).unwrap();
         assert_eq!(actual, expected);
     }
 
@@ -359,7 +381,7 @@ mod tests {
         expected.auth_response = gen_native_password(String::from("password"), DEFAULT_SALT);
         expected.database = "test_db".to_string();
         expected.user = "root".to_string();
-        expected.plugin_name = MYSQL_NATIVE_PASSWORD.to_string();
+        expected.auth_method = MYSQL_NATIVE_PASSWORD.to_string();
 
         let mut actual = Auth::new();
         let tmp = Auth::write_handshake_resp(
@@ -370,7 +392,7 @@ mod tests {
             DEFAULT_SALT,
             "test_db".to_string(),
         );
-        actual.parse_handshake(tmp.as_slice()).unwrap();
+        actual.parse_client_handshake_packet(tmp.as_slice(), false).unwrap();
         assert_eq!(actual, expected);
     }
 }

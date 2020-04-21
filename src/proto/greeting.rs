@@ -44,7 +44,7 @@ impl Greeting {
 
     /// Initial Handshake Packet - protocol version 10
     /// See https://dev.mysql.com/doc/internals/en/connection-phase-packets.html#packet-Protocol::HandshakeV10
-    pub fn write_hand_shake_v10(&self) -> io::Result<Vec<u8>> {
+    pub fn write_handshake_v10(&self) -> io::Result<Vec<u8>> {
         let mut buf = vec![];
         // [u8] protocol version
         buf.write_u8(PROTOCOL_VERSION)?;
@@ -65,7 +65,7 @@ impl Greeting {
         // [u16] capability flags (upper 2 bytes)
         buf.write_u16::<LittleEndian>((self.capability >> 16) as u16)?;
         // [u8] length of auth-plugin-data
-        buf.write_u8(MYSQL_NATIVE_PASSWORD.len() as u8)?;
+        buf.write_u8(21u8)?;
         // [0;10] reserved (all [00])
         buf.write(&[0; 10])?;
         // auth-plugin-data-part-2 ($len=MAX(13, length of auth-plugin-data - 8))
@@ -166,7 +166,7 @@ mod tests {
     fn test_greeting1() {
         let mut expected = Greeting::new(4, "".to_string());
         let mut actual = box Greeting::default();
-        let data = expected.write_hand_shake_v10();
+        let data = expected.write_handshake_v10().unwrap();
         let result = actual.parse_client_handshake_packet(data.as_slice());
         assert!(result.is_ok());
         assert_eq!(actual, expected);
@@ -179,7 +179,7 @@ mod tests {
         expected.capability = DEFAULT_SERVER_CAPABILITY & !(CapabilityClientPluginAuth as u32);
         assert_eq!(expected.capability, 16884237);
         let mut actual = box Greeting::default();
-        let data = expected.write_hand_shake_v10();
+        let data = expected.write_handshake_v10().unwrap();
         let result = actual.parse_client_handshake_packet(data.as_slice());
         assert!(result.is_ok());
         assert_eq!(actual, expected);

@@ -13,14 +13,8 @@ impl Handler for DB {
 
 #[cfg(test)]
 mod tests {
-    use sql_protocol::Server;
     use crate::DB;
 
     #[test]
-    fn test_server() {
-        let mut db = Server::new(
-            "127.0.0.1:9000",
-        );
-        //             Box::new(DB{}),
-    }
+    fn test_server() {}
 }

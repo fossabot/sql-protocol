@@ -1,8 +1,9 @@
 mod greeting;
 mod auth;
-mod packet;
+mod packets;
 mod listener;
 mod connection;
+mod stream;
 
 pub use listener::{Handler, Listener};
 pub use connection::Connection;
