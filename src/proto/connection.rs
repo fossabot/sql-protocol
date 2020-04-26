@@ -38,13 +38,9 @@ impl Connection {
         self.auth.parse_client_handshake_packet(payload, true)
     }
 
-    pub fn pack_greeting(&mut self) {
-        let pkg = self.greeting.write_handshake_v10().unwrap();
-    }
-
     pub fn unpack_auth(&mut self) -> ProtoResult<()> {
         let payload = self.packets.next();
-        self.auth.parse_client_handshake_packet(payload.unwrap().as_slice(),true)?;
+        self.auth.parse_client_handshake_packet(payload.unwrap().as_slice(), true)?;
         Ok(())
     }
 
@@ -54,16 +50,17 @@ impl Connection {
         self.packets.set_stream(stream);
         let mut buf = [0u8; 8192];
         let data = &[0u8; 1];
-//        match stream.read(&mut buf) {
-//            Ok(n) => {
-////                    info!("{}", std::str::from_utf8_unchecked(buf.as_ref()));
-//            }
-//            Err(err) => {
-//                error!("{}", err);
-//            }
-//        }
-
-//        stream.write(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n").unwrap();
+        // todo tls
+        self.write_handshake_v10();
+        let pkg = self.packets.read_ephemeral_packet_direct().unwrap();
+        self.auth.parse_client_handshake_packet(pkg.as_slice(), false);
+        info!("{:?}", pkg.as_slice());
+        info!("{}", self.auth);
+    }
+    fn write_handshake_v10(&mut self) {
+        let pkg = self.greeting.write_handshake_v10(false).unwrap();
+        self.packets.write_packet(pkg.as_slice());
+        info!("write handshake");
     }
 
     fn handle_next_command(&mut self, data: &[u8]) {

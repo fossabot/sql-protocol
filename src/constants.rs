@@ -1,7 +1,7 @@
-use crate::constants::CapabilityFlag::{CapabilityClientProtocol41, CapabilityClientLongPassword, CapabilityClientLongFlag, CapabilityClientTransactions, CapabilityClientMultiStatements, CapabilityClientPluginAuth, CapabilityClientDeprecateEOF, CapabilityClientSecureConnection, CapabilityClientConnectWithDB};
+use crate::constants::CapabilityFlag::{CapabilityClientProtocol41, CapabilityClientLongPassword, CapabilityClientLongFlag, CapabilityClientTransactions, CapabilityClientMultiStatements, CapabilityClientPluginAuth, CapabilityClientDeprecateEOF, CapabilityClientSecureConnection, CapabilityClientConnectWithDB, CapabilityClientFoundRows, CapabilityClientMultiResults, CapabilityClientPluginAuthLenencClientData, CapabilityClientConnAttr};
 
 // MAX_PACKET_SIZE is the maximum payload length of a packet the server supports.
-const MAX_PACKET_SIZE: u64 = (1 << 24) - 1;
+pub const MAX_PACKET_SIZE: usize = (1 << 24) - 1;
 // PROTOCOL_VERSION is the current version of the protocol.
 const PROTOCOL_VERSION: i8 = 10;
 
@@ -626,14 +626,18 @@ pub const DEFAULT_CLIENT_CAPABILITY: u32 = CapabilityClientLongPassword as u32 |
     CapabilityClientSecureConnection as u32;
 
 pub const DEFAULT_SERVER_CAPABILITY: u32 = CapabilityClientLongPassword as u32 |
+    CapabilityClientFoundRows as u32 |
     CapabilityClientLongFlag as u32 |
     CapabilityClientConnectWithDB as u32 |
     CapabilityClientProtocol41 as u32 |
     CapabilityClientTransactions as u32 |
+    CapabilityClientSecureConnection as u32 |
     CapabilityClientMultiStatements as u32 |
+    CapabilityClientMultiResults as u32 |
     CapabilityClientPluginAuth as u32 |
+    CapabilityClientPluginAuthLenencClientData as u32 |
     CapabilityClientDeprecateEOF as u32 |
-    CapabilityClientSecureConnection as u32;
+    CapabilityClientConnAttr as u32;
 
 pub const DEFAULT_SALT: &'static [u8; 20] = &[0x77, 0x63, 0x6a, 0x6d, 0x61, 0x22, 0x23, 0x27, // first part
     0x38, 0x26, 0x55, 0x58, 0x3b, 0x5d, 0x44, 0x78, 0x53, 0x73, 0x6b, 0x41];

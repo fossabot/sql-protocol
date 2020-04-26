@@ -44,7 +44,10 @@ impl Greeting {
 
     /// Initial Handshake Packet - protocol version 10
     /// See https://dev.mysql.com/doc/internals/en/connection-phase-packets.html#packet-Protocol::HandshakeV10
-    pub fn write_handshake_v10(&self) -> io::Result<Vec<u8>> {
+    pub fn write_handshake_v10(&mut self, enable_tls: bool) -> io::Result<Vec<u8>> {
+        if enable_tls {
+            self.capability |= CapabilityFlag::CapabilityClientSSL as u32;
+        }
         let mut buf = vec![];
         // [u8] protocol version
         buf.write_u8(PROTOCOL_VERSION)?;
@@ -166,7 +169,7 @@ mod tests {
     fn test_greeting1() {
         let mut expected = Greeting::new(4, "".to_string());
         let mut actual = box Greeting::default();
-        let data = expected.write_handshake_v10().unwrap();
+        let data = expected.write_handshake_v10(false).unwrap();
         let result = actual.parse_client_handshake_packet(data.as_slice());
         assert!(result.is_ok());
         assert_eq!(actual, expected);
@@ -179,7 +182,7 @@ mod tests {
         expected.capability = DEFAULT_SERVER_CAPABILITY & !(CapabilityClientPluginAuth as u32);
         assert_eq!(expected.capability, 16884237);
         let mut actual = box Greeting::default();
-        let data = expected.write_handshake_v10().unwrap();
+        let data = expected.write_handshake_v10(false).unwrap();
         let result = actual.parse_client_handshake_packet(data.as_slice());
         assert!(result.is_ok());
         assert_eq!(actual, expected);

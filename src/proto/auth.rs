@@ -17,6 +17,7 @@ use sha1::{Sha1, Digest};
 use crate::constants::MYSQL_NATIVE_PASSWORD;
 use crate::errors::{ProtoResult, ProtoError};
 use std::{io, cmp, convert};
+use std::fmt::{Display, Formatter, Error};
 
 #[derive(Debug, Clone, Default)]
 pub struct Auth {
@@ -235,6 +236,22 @@ impl cmp::PartialEq for Auth {
             && self.max_packet_size == other.max_packet_size
             && self.auth_response == other.auth_response
             && self.user == other.user
+    }
+}
+
+impl Display for Auth{
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        write!(
+            f,
+            "Auth: [user: {}, database: {}, auth_method: {}, auth_response: {:?}, capability_flags: {}, character_set: {}, max_packet_size: {}]",
+            self.user,
+            self.database,
+            self.auth_method,
+            self.auth_response.as_slice(),
+            self.capability_flags,
+            self.character_set,
+            self.max_packet_size,
+        )
     }
 }
 

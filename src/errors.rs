@@ -92,6 +92,12 @@ quick_error! {
         ReadNextPacketError{
             description("Read next packet error")
         }
+        EmptyPacketError{
+            description("Empty packet error")
+        }
+        MultiPacketNotSupport{
+            description("Multi packet not support")
+        }
     }
 }
 
