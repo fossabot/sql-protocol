@@ -19,6 +19,9 @@ pub const CHARACTER_SET_BINARY: i32 = 63;
 // See http://dev.mysql.com/doc/internals/en/status-flags.html
 pub const SERVER_STATUS_AUTOCOMMIT: u16 = 0x0002;
 
+// Packet
+pub const OK_PACKET: u8 = 0x00;
+
 
 // Originally found in include/mysql/mysql_com.h
 #[allow(dead_code)]
@@ -117,6 +120,7 @@ pub enum CapabilityFlag {
 }
 
 // See https://dev.mysql.com/doc/internals/en/command-phase.html
+#[derive(Copy, Clone)]
 pub enum PacketType {
     ComSleep,
     ComQuit,
@@ -189,6 +193,14 @@ impl Into<&'static str> for PacketType {
             PacketType::ComBinlogDumpGtid => "COM_BINLOG_DUMP_GTID",
             PacketType::ComResetConnection => "COM_RESET_CONNECTION",
         };
+    }
+}
+
+
+impl ToString for PacketType {
+    fn to_string(&self) -> String {
+        let c: &'static str = (*self).into();
+        format!("{}", c)
     }
 }
 

@@ -42,6 +42,10 @@ impl Greeting {
         }
     }
 
+    pub fn status_flag(&self) -> u16 {
+        self.status_flag
+    }
+
     /// Initial Handshake Packet - protocol version 10
     /// See https://dev.mysql.com/doc/internals/en/connection-phase-packets.html#packet-Protocol::HandshakeV10
     pub fn write_handshake_v10(&mut self, enable_tls: bool) -> io::Result<Vec<u8>> {

@@ -98,6 +98,9 @@ quick_error! {
         MultiPacketNotSupport{
             description("Multi packet not support")
         }
+        ComQuit{
+            description("Com Quit")
+        }
     }
 }
 

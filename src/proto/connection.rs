@@ -54,8 +54,16 @@ impl Connection {
         self.write_handshake_v10();
         let pkg = self.packets.read_ephemeral_packet_direct().unwrap();
         self.auth.parse_client_handshake_packet(pkg.as_slice(), false);
+        // todo tls
+        self.packets.write_ok_packet(0, 0, self.greeting.status_flag(), 0);
         info!("{:?}", pkg.as_slice());
         info!("{}", self.auth);
+        loop {
+            let result: ProtoResult<()> = self.packets.handle_next_command(self.greeting.status_flag());
+            if result.is_err() {
+                panic!("");// todo
+            }
+        }
     }
     fn write_handshake_v10(&mut self) {
         let pkg = self.greeting.write_handshake_v10(false).unwrap();
@@ -63,46 +71,10 @@ impl Connection {
         info!("write handshake");
     }
 
-    fn handle_next_command(&mut self, data: &[u8]) {
-        match data[0].into() {
-            PacketType::ComQuit => {
-                info!("com quit");
-                return;
-            }
-            PacketType::ComInitDb => {
-                let db = parse_com_init_db(data);
-                return;
-            }
-            PacketType::ComPing => {}
-            PacketType::ComQuery => {}
-            PacketType::ComStmtPrepare => {}
-            PacketType::ComStmtExecute => {}
-            PacketType::ComStmtReset => {}
-            PacketType::ComStmtClose => {}
-            _ => {
-                let cmd: PacketType = data[0].into();
-                let cmd_str: &'static str = cmd.into();
-                error!("Unknown command {}", cmd_str);
-                self.write_err_packet();
-            }
-        }
-    }
 
     fn write_err_packet(&self) {}
 }
 
-
-fn parse_com_init_db(data: &[u8]) -> String {
-    let tmp = data[1..].to_vec();
-    String::from_utf8(tmp).unwrap()
-}
-
-fn parse_com_statement(data: &[u8]) -> ProtoResult<()> {
-    let mut data = &data[1..];
-    let stmt_id = data.read_u32::<LittleEndian>()
-        .map_err(|_| { ProtoError::ParseComStatementError });
-    Ok(())
-}
 
 fn read_header_from(mut reader: Box<dyn Read>) -> io::Result<u64> {
     let mut header = [0; 4];
