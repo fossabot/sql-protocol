@@ -7,7 +7,9 @@ use std::ptr;
 use dakv_logger::prelude::*;
 
 use crate::errors::{ProtoResult, ProtoError};
-use crate::constants::{MAX_PACKET_SIZE, OK_PACKET, PacketType};
+use crate::constants::{MAX_PACKET_SIZE, OK_PACKET, PacketType, CapabilityFlag, ERR_PACKET, StateError, ServerError, SERVER_MORE_RESULTS_EXISTS, EOF_PACKET};
+use std::sync::Arc;
+use crate::Handler;
 
 pub struct Packets {
     sequence_id: u8,
@@ -75,7 +77,6 @@ impl Packets {
         };
     }
 
-
     pub fn read_ephemeral_packet(&mut self) -> ProtoResult<Vec<u8>> {
         let length = self.read_header().unwrap();
         return match length {
@@ -104,7 +105,7 @@ impl Packets {
         if let Some(inner) = &mut self.stream {
             return match inner.read_exact(&mut header) {
                 Ok(n) => {
-                    info!("{:?}",header);
+                    info!("{:?}", header);
                     let sequence = header[3];
                     if sequence != self.sequence_id {
                         error!("current sequence:{}, get sequence:{}", self.sequence_id, sequence);
@@ -158,7 +159,48 @@ impl Packets {
         Ok(())
     }
 
-    pub fn write_err_packet(&mut self) {}
+    pub fn write_rows(&mut self) {}
+
+    pub fn write_row(&mut self) {}
+
+    pub fn write_err_packet_from_err(&mut self) -> io::Result<()> {
+        self.write_err_packet(ServerError::ERUnknownError as u16, StateError::SSUnknownSQLState.into(), "Unknown error".to_string())
+    }
+
+    pub fn write_end_result(&mut self, more: bool, capability: u32, affected_rows: u64, last_insert_id: u64, flags: u16, warnings: u16) -> io::Result<()> {
+        let mut flags = flags;
+        if more {
+            flags |= SERVER_MORE_RESULTS_EXISTS;
+        }
+        if capability & CapabilityFlag::CapabilityClientDeprecateEOF as u32 == 0 {
+            self.write_eof_packet(flags, warnings)?;
+        }
+        Ok(())
+    }
+
+    pub fn write_eof_packet(&mut self, flags: u16, warnings: u16) -> io::Result<()> {
+        let inner: &mut TcpStream = self.stream.as_mut().unwrap();
+        inner.write_u8(EOF_PACKET)?;
+        inner.write_u16::<LittleEndian>(warnings)?;
+        inner.write_u16::<LittleEndian>(flags)?;
+        Ok(())
+    }
+
+    pub fn write_err_packet(&mut self, err_code: u16, mut sql_state: String, err_msg: String) -> io::Result<()> {
+        assert_eq!(sql_state.len(), 5);
+        if let Some(inner) = &mut self.stream {
+            inner.write_u8(ERR_PACKET)?;
+            inner.write_u16::<LittleEndian>(err_code)?;
+            inner.write_u8('#' as u8)?;
+            if sql_state.is_empty() {
+                sql_state = StateError::SSUnknownSQLState.into();
+            }
+            self.write(sql_state.as_bytes())?;
+            self.write(err_msg.as_bytes())?;
+            return Ok(());
+        }
+        panic!("Stream is empty");
+    }
 
     pub fn write_ok_packet(&mut self, affected_rows: u64, last_insert_id: u64, flags: u16, warnings: u16) -> io::Result<()> {
         if let Some(inner) = &mut self.stream {
@@ -210,7 +252,7 @@ impl Packets {
     }
 
 
-    pub fn handle_next_command(&mut self, status: u16) -> ProtoResult<()> {
+    pub fn handle_next_command(&mut self, handler: Arc<dyn Handler>, status: u16, capability: u32) -> ProtoResult<()> {
         self.sequence_id = 0;
         let data: Vec<u8> = self.read_ephemeral_packet().unwrap();
         let data = data.as_slice();
@@ -229,7 +271,22 @@ impl Packets {
             }
             PacketType::ComPing => {}
             PacketType::ComQuery => {
-
+                let query = parse_com_query(data);
+                let statements = if capability & CapabilityFlag::CapabilityClientMultiStatements as u32 != 0 {
+                    // todo multi statements
+                    vec![query]
+                } else {
+                    vec![query]
+                };
+                let length = statements.len();
+                info!("Queries:{:?}", statements);
+                for (index, sql) in statements.iter().enumerate() {
+                    let mut more = false;
+                    if index != length - 1 {
+                        more = true;
+                    }
+                    self.exec_query(handler.clone(), sql, more)?;
+                }
             }
             PacketType::ComStmtPrepare => {}
             PacketType::ComStmtExecute => {}
@@ -239,15 +296,29 @@ impl Packets {
                 let cmd: PacketType = data[0].into();
                 let cmd_str: &'static str = cmd.into();
                 error!("Unknown command {}", cmd_str);
-                self.write_err_packet();
+//                self.write_err_packet();
             }
         }
         Ok(())
+    }
+
+    pub fn exec_query(&mut self, handler: Arc<dyn Handler>, sql: &String, more: bool) -> ProtoResult<()> {
+        let result = handler.com_query();
+        self.write_err_packet_from_err()?;
+        Err(ProtoError::ParseComStatementError)
     }
 }
 
 
 fn parse_com_init_db(data: &[u8]) -> String {
+    trim_packet_type(data)
+}
+
+fn parse_com_query(data: &[u8]) -> String {
+    trim_packet_type(data)
+}
+
+fn trim_packet_type(data: &[u8]) -> String {
     let tmp = data[1..].to_vec();
     String::from_utf8(tmp).unwrap()
 }

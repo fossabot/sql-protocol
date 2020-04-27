@@ -21,7 +21,12 @@ pub const SERVER_STATUS_AUTOCOMMIT: u16 = 0x0002;
 
 // Packet
 pub const OK_PACKET: u8 = 0x00;
+pub const ERR_PACKET: u8 = 0xff;
+pub const EOF_PACKET: u8 = 0xff;
 
+
+//flags
+pub const SERVER_MORE_RESULTS_EXISTS: u16 = 0x0008;
 
 // Originally found in include/mysql/mysql_com.h
 #[allow(dead_code)]
@@ -346,7 +351,7 @@ enum ClientError {
 // The below are in sorted order by value, grouped by vterror code they should be bucketed into.
 // See above reference for more information on each code.
 #[allow(dead_code)]
-enum ServerError {
+pub enum ServerError {
     // unknown
     ERUnknownError = 1105,
     // unimplemented
@@ -526,7 +531,7 @@ enum ServerError {
 // Sql states for errors.
 // Originally found in include/mysql/sql_state.h
 #[allow(dead_code)]
-enum StateError {
+pub enum StateError {
     // SSUnknownSqlstate is ER_SIGNAL_EXCEPTION in
     // include/mysql/sql_state.h, but:
     // const char *unknown_sqlstate= "HY000"
@@ -557,7 +562,7 @@ enum StateError {
     SSLockDeadlock,
 }
 
-impl Into<&str> for StateError {
+impl Into<&'static str> for StateError {
     fn into(self) -> &'static str {
         return match self {
             StateError::SSUnknownSQLState => "HY000",
@@ -573,6 +578,13 @@ impl Into<&str> for StateError {
             StateError::SSAccessDeniedError => "28000",
             StateError::SSLockDeadlock => "40001",
         };
+    }
+}
+
+impl Into<String> for StateError {
+    fn into(self) -> String {
+        let s: &'static str = self.into();
+        s.into()
     }
 }
 

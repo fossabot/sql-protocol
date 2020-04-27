@@ -46,6 +46,10 @@ impl Greeting {
         self.status_flag
     }
 
+    pub fn capability(&self) -> u32 {
+        self.capability
+    }
+
     /// Initial Handshake Packet - protocol version 10
     /// See https://dev.mysql.com/doc/internals/en/connection-phase-packets.html#packet-Protocol::HandshakeV10
     pub fn write_handshake_v10(&mut self, enable_tls: bool) -> io::Result<Vec<u8>> {

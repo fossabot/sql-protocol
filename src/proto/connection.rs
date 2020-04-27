@@ -59,9 +59,9 @@ impl Connection {
         info!("{:?}", pkg.as_slice());
         info!("{}", self.auth);
         loop {
-            let result: ProtoResult<()> = self.packets.handle_next_command(self.greeting.status_flag());
+            let result: ProtoResult<()> = self.packets.handle_next_command(handler.clone(),self.greeting.status_flag(),self.greeting.capability());
             if result.is_err() {
-                panic!("");// todo
+                return
             }
         }
     }
