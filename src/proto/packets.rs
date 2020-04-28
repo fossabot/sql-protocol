@@ -20,7 +20,7 @@ trait WriteLenEncode: WriteBytesExt {
     fn write_len_encode(&mut self, value: u64) -> io::Result<()>;
 }
 
-impl WriteLenEncode for TcpStream {
+impl WriteLenEncode for Vec<u8> {
     fn write_len_encode(&mut self, value: u64) -> io::Result<()> {
         match value {
             value if value < 251 => {
@@ -142,6 +142,7 @@ impl Packets {
         Ok(())
     }
 
+    // todo used
     pub fn write(&mut self, payload: &[u8]) -> io::Result<()> {
         let mut buf = vec![];
         // length of payload
@@ -187,35 +188,36 @@ impl Packets {
     }
 
     pub fn write_err_packet(&mut self, err_code: u16, mut sql_state: String, err_msg: String) -> io::Result<()> {
-        assert_eq!(sql_state.len(), 5);
-        if let Some(inner) = &mut self.stream {
-            inner.write_u8(ERR_PACKET)?;
-            inner.write_u16::<LittleEndian>(err_code)?;
-            inner.write_u8('#' as u8)?;
-            if sql_state.is_empty() {
-                sql_state = StateError::SSUnknownSQLState.into();
-            }
-            self.write(sql_state.as_bytes())?;
-            self.write(err_msg.as_bytes())?;
-            return Ok(());
+        let mut inner = Vec::with_capacity(1 + 2 + 1 + 5 + err_msg.len());
+        inner.write_u8(ERR_PACKET)?;
+        inner.write_u16::<LittleEndian>(err_code)?;
+        inner.write_u8('#' as u8)?;
+        if sql_state.is_empty() {
+            sql_state = StateError::SSUnknownSQLState.into();
         }
-        panic!("Stream is empty");
+        assert_eq!(sql_state.len(), 5);
+
+        inner.write(sql_state.as_bytes())?;
+        inner.write(err_msg.as_bytes())?;
+        self.write_packet(inner.as_slice())
     }
 
     pub fn write_ok_packet(&mut self, affected_rows: u64, last_insert_id: u64, flags: u16, warnings: u16) -> io::Result<()> {
-        if let Some(inner) = &mut self.stream {
-            inner.write_u8(OK_PACKET)?;
-            // Affected rows
-            inner.write_len_encode(affected_rows)?;
-            // Last insert id
-            inner.write_len_encode(last_insert_id)?;
+        let mut inner = Vec::with_capacity(
+            1 +
+                len_enc_int_size(affected_rows) +
+                len_enc_int_size(last_insert_id) +
+                2 + 2);
 
-            inner.write_u16::<LittleEndian>(flags)?;
-            inner.write_u16::<LittleEndian>(warnings)?;
-        } else {
-            panic!("Stream is empty");
-        }
-        Ok(())
+        inner.write_u8(OK_PACKET)?;
+        // Affected rows
+        inner.write_len_encode(affected_rows)?;
+        // Last insert id
+        inner.write_len_encode(last_insert_id)?;
+
+        inner.write_u16::<LittleEndian>(flags)?;
+        inner.write_u16::<LittleEndian>(warnings)?;
+        self.write_packet(inner.as_slice())
     }
 
     pub fn write_packet(&mut self, data: &[u8]) -> io::Result<()> {
@@ -234,7 +236,10 @@ impl Packets {
                 header[2] = (pkg_len >> 16) as u8;
                 header[3] = self.sequence_id;
                 let n = inner.write(&header)?;
-
+//                if n != 4 {
+//                    // todo
+//                    panic!("");
+//                }
                 let n = inner.write(&data[index..index + pkg_len])?;
                 self.sequence_id += 1;
                 len -= pkg_len;
@@ -328,4 +333,16 @@ fn parse_com_statement(data: &[u8]) -> ProtoResult<()> {
     let stmt_id = data.read_u32::<LittleEndian>()
         .map_err(|_| { ProtoError::ParseComStatementError });
     Ok(())
+}
+
+fn len_enc_int_size(n: u64) -> usize {
+    if n < 251 {
+        1
+    } else if n < 1 << 16 {
+        3
+    } else if n < 1 << 24 {
+        4
+    } else {
+        9
+    }
 }

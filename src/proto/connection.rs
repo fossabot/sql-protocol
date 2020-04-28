@@ -54,21 +54,21 @@ impl Connection {
         self.write_handshake_v10();
         let pkg = self.packets.read_ephemeral_packet_direct().unwrap();
         self.auth.parse_client_handshake_packet(pkg.as_slice(), false);
-        // todo tls
-        self.packets.write_ok_packet(0, 0, self.greeting.status_flag(), 0);
         info!("{:?}", pkg.as_slice());
         info!("{}", self.auth);
+        // todo tls
+        self.packets.write_ok_packet(0, 0, self.greeting.status_flag(), 0);
         loop {
-            let result: ProtoResult<()> = self.packets.handle_next_command(handler.clone(),self.greeting.status_flag(),self.greeting.capability());
+            let result: ProtoResult<()> = self.packets.handle_next_command(handler.clone(), self.greeting.status_flag(), self.greeting.capability());
             if result.is_err() {
-                return
+                return;
             }
         }
     }
     fn write_handshake_v10(&mut self) {
         let pkg = self.greeting.write_handshake_v10(false).unwrap();
+        info!("handshake:{:?}", pkg.as_slice());
         self.packets.write_packet(pkg.as_slice());
-        info!("write handshake");
     }
 
 
