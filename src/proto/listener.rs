@@ -1,8 +1,9 @@
 use std::net::{TcpListener, ToSocketAddrs};
-use std::{thread};
+use std::{thread, io};
 use dakv_logger::prelude::*;
 use crate::proto::Connection;
 use std::sync::Arc;
+use crate::sql_type::SqlResult;
 
 pub trait Handler: Send + Sync {
     // NewConnection is called when a connection is created.
@@ -13,14 +14,9 @@ pub trait Handler: Send + Sync {
     // close_connection is called when a connection is closed.
     fn close_connection(&self);
     // com_query is called when a connection receives a query.
-    // Note the contents of the query slice may change after
-    // the first call to callback. So the Handler should not
-    // hang on to the byte slice.
-    fn com_query(&self);
+    fn com_query(&self, sql: &String, callback:  &mut dyn FnMut(SqlResult) -> io::Result<()>) -> io::Result<()>;
 
-    fn check_auth(&self) {
-        self.com_query()
-    }
+    fn check_auth(&self) {}
 }
 
 pub struct Listener {
@@ -36,7 +32,7 @@ impl Listener {
         Listener {
             listener,
             connection_id: 0,
-            server_version: "".to_string(),
+            server_version: "5.7.0".to_string(),
         }
     }
 
