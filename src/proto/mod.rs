@@ -3,7 +3,6 @@ mod auth;
 mod packets;
 mod listener;
 mod connection;
-mod stream;
 
 pub use listener::{Handler, Listener};
 pub use connection::Connection;

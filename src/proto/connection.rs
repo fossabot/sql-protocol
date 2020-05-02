@@ -70,15 +70,4 @@ impl Connection {
         info!("handshake:{:?}", pkg.as_slice());
         self.packets.write_packet(pkg.as_slice());
     }
-
-
-    fn write_err_packet(&self) {}
-}
-
-
-fn read_header_from(mut reader: Box<dyn Read>) -> io::Result<u64> {
-    let mut header = [0; 4];
-    let _ = reader.read(&mut header)?;
-    Ok(0)
-//    match result { }
 }
