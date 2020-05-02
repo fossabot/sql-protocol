@@ -4,6 +4,7 @@ use dakv_logger::prelude::*;
 use crate::proto::Connection;
 use std::sync::Arc;
 use crate::sql_type::SqlResult;
+use std::sync::atomic::AtomicBool;
 
 pub trait Handler: Send + Sync {
     // new_connection is called when a connection is created.
@@ -14,7 +15,7 @@ pub trait Handler: Send + Sync {
     // close_connection is called when a connection is closed.
     fn close_connection(&self);
     // com_query is called when a connection receives a query.
-    fn com_query(&self, sql: &String, callback:  &mut dyn FnMut(SqlResult) -> io::Result<()>) -> io::Result<()>;
+    fn com_query(&self, sql: &String, callback: &mut dyn FnMut(SqlResult) -> io::Result<()>) -> io::Result<()>;
 
     fn check_auth(&self) {}
 }
@@ -23,6 +24,7 @@ pub struct Listener {
     listener: TcpListener,
     connection_id: u32,
     server_version: String,
+    shutdown: AtomicBool,
 }
 
 
@@ -33,11 +35,12 @@ impl Listener {
             listener,
             connection_id: 0,
             server_version: "5.7.0".to_string(),
+            shutdown: AtomicBool::new(false),
         }
     }
 
     pub fn accept(&mut self, handler: Arc<dyn Handler>) {
-        info!("Start server ...");
+        debug!("Start server ...");
         for stream in self.listener.incoming() {
             let connection_id = self.connection_id;
             self.connection_id += 1;

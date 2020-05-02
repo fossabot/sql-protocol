@@ -89,6 +89,9 @@ quick_error! {
         ParseComStatementError{
             description("Parse com statement error when unpacking packets")
         }
+        ParseComSetOptionError{
+            description("Parse com set option error when unpacking packets")
+        }
         ReadNextPacketError{
             description("Read next packet error")
         }

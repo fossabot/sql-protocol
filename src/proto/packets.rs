@@ -95,7 +95,7 @@ impl Packets {
         let length = self.read_header().unwrap();
         return match length {
             0 => {
-                info!("Bad packet length");
+                debug!("Bad packet length");
                 Ok(vec![])
             }
             l if l > MAX_PACKET_SIZE => {
@@ -119,7 +119,7 @@ impl Packets {
         if let Some(inner) = &mut self.stream {
             return match inner.read_exact(&mut header) {
                 Ok(n) => {
-                    info!("{:?}", header);
+                    debug!("{:?}", header);
                     let sequence = header[3];
                     if sequence != self.sequence_id {
                         error!("current sequence:{}, get sequence:{}", self.sequence_id, sequence);
@@ -351,20 +351,23 @@ impl Packets {
         self.status_flags = status_flags;
         let data: Vec<u8> = self.read_ephemeral_packet().unwrap();
         let data = data.as_slice();
+        let pt = data[0];
+        debug!("Packet type {}", PacketType::from(pt as u64).to_string());
 
-        info!("Packet type {}", PacketType::from(data[0]).to_string());
-
-        match data[0].into() {
+        match pt.into() {
             PacketType::ComQuit => {
-                info!("ComQuit");
+                debug!("ComQuit");
                 return Err(ProtoError::ComQuit);
             }
-            PacketType::ComInitDb => {
+            PacketType::ComInitDB => {
                 let db = parse_com_init_db(data);
-                info!("ComInitDb {}", db);
+                debug!("ComInitDB {}", db);
+                // todo set db
                 self.write_ok_packet(0, 0, status_flags, 0)?;
             }
-            PacketType::ComPing => {}
+            PacketType::ComPing => {
+                self.write_ok_packet(0, 0, status_flags, 0)?;
+            }
             PacketType::ComQuery => {
                 let query = parse_com_query(data);
                 let statements = if capability & CapabilityFlag::CapabilityClientMultiStatements as u32 != 0 {
@@ -375,15 +378,33 @@ impl Packets {
                 };
                 let length = statements.len();
                 for (index, sql) in statements.iter().enumerate() {
-                    info!("Query sql:{:?}", sql);
+                    debug!("Query sql:{:?}", sql);
                     let mut more = false;
                     if index != length - 1 {
                         more = true;
                     }
                     self.exec_query(handler.clone(), sql, more)?;
-//                    let inner: &mut TcpStream = self.stream.as_mut().unwrap();
-//                    info!("flush");
-//                    inner.flush()?;
+                }
+            }
+            PacketType::ComSetOption => {
+                let operation = parse_set_option(data);
+                match operation {
+                    Ok(n) => {
+                        match n {
+                            0 => {
+                                self.capability |= CapabilityFlag::CapabilityClientMultiStatements as u32;
+                            }
+                            1 => {
+                                self.capability &= !(CapabilityFlag::CapabilityClientMultiStatements as u32);
+                            }
+                            _ => {
+                                self.write_err_packet(ServerError::ERUnknownComError as u16, StateError::SSUnknownComError.into(), "Unknown set option".to_string());
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        self.write_err_packet(ServerError::ERUnknownComError as u16, StateError::SSUnknownComError.into(), "Error parsing set option".to_string());
+                    }
                 }
             }
             PacketType::ComStmtPrepare => {}
@@ -391,10 +412,10 @@ impl Packets {
             PacketType::ComStmtReset => {}
             PacketType::ComStmtClose => {}
             _ => {
-                let cmd: PacketType = data[0].into();
+                let cmd: PacketType = pt.into();
                 let cmd_str: &'static str = cmd.into();
-                error!("Unknown command {}", cmd_str);
-//                self.write_err_packet();
+                debug!("Unknown command {}", cmd_str);
+                self.write_err_packet(ServerError::ERUnknownComError as u16, StateError::SSUnknownComError.into(), format!("Unknown command: {}", cmd_str));
             }
         }
         Ok(())
@@ -409,20 +430,22 @@ impl Packets {
                 flags |= SERVER_MORE_RESULTS_EXISTS;
             }
             if send_finished {
+                // failsafe
                 return Err(io::Error::new(io::ErrorKind::UnexpectedEof, ""));
             }
             if !field_sent {
                 field_sent = true;
                 return if qr.fields.len() == 0 {
                     send_finished = true;
-                    self.write_ok_packet(qr.affected_rows, qr.insert_id, flags, 1)
+                    // todo warning count
+                    self.write_ok_packet(qr.affected_rows, qr.insert_id, flags, 0)
                 } else {
                     self.write_fields(qr)
                 };
             }
             return self.write_rows(qr);
         });
-        info!("field_sent:{}, send_finished:{}", field_sent, send_finished);
+        debug!("field_sent:{}, send_finished:{}", field_sent, send_finished);
         if field_sent {
             if !send_finished {
                 self.write_end_result(more, 0, 0, 0)?;
@@ -448,11 +471,16 @@ fn trim_packet_type(data: &[u8]) -> String {
     String::from_utf8(tmp).unwrap()
 }
 
-fn parse_com_statement(data: &[u8]) -> ProtoResult<()> {
+fn parse_com_statement(data: &[u8]) -> ProtoResult<u32> {
     let mut data = &data[1..];
-    let stmt_id = data.read_u32::<LittleEndian>()
-        .map_err(|_| { ProtoError::ParseComStatementError });
-    Ok(())
+    let stmt_id = data.read_u32::<LittleEndian>()?;
+    Ok(stmt_id)
+}
+
+fn parse_set_option(data: &[u8]) -> ProtoResult<u16> {
+    let mut data = &data[1..];
+    let option_result = data.read_u16::<LittleEndian>()?;
+    Ok(option_result)
 }
 
 fn len_enc_int_size(n: u64) -> usize {

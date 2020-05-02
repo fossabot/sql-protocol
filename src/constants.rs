@@ -129,7 +129,7 @@ pub enum CapabilityFlag {
 pub enum PacketType {
     ComSleep,
     ComQuit,
-    ComInitDb,
+    ComInitDB,
     ComQuery,
     ComFieldList,
     ComCreateDb,
@@ -167,7 +167,7 @@ impl Into<&'static str> for PacketType {
         return match self {
             PacketType::ComSleep => "COM_SLEEP",
             PacketType::ComQuit => "COM_QUIT",
-            PacketType::ComInitDb => "COM_INIT_DB",
+            PacketType::ComInitDB => "COM_INIT_DB",
             PacketType::ComQuery => "COM_QUERY",
             PacketType::ComFieldList => "COM_FIELD_LIST",
             PacketType::ComCreateDb => "COM_CREATE_DB",
@@ -214,7 +214,7 @@ impl Into<u16> for PacketType {
         return match self {
             PacketType::ComSleep => 0x00,
             PacketType::ComQuit => 0x01,
-            PacketType::ComInitDb => 0x02,
+            PacketType::ComInitDB => 0x02,
             PacketType::ComQuery => 0x03,
             PacketType::ComFieldList => 0x04,
             PacketType::ComCreateDb => 0x05,
@@ -253,7 +253,7 @@ impl From<u64> for PacketType {
         return match integer {
             0x00 => PacketType::ComSleep,
             0x01 => PacketType::ComQuit,
-            0x02 => PacketType::ComInitDb,
+            0x02 => PacketType::ComInitDB,
             0x03 => PacketType::ComQuery,
             0x04 => PacketType::ComFieldList,
             0x05 => PacketType::ComCreateDb,

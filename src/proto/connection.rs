@@ -45,7 +45,7 @@ impl Connection {
     }
 
     pub fn handle(&mut self, mut stream: TcpStream, handler: Arc<dyn Handler>) {
-        info!("Read request ...");
+        debug!("Read request ...");
 
         self.packets.set_stream(stream);
         let mut buf = [0u8; 8192];
@@ -54,8 +54,8 @@ impl Connection {
         self.write_handshake_v10();
         let pkg = self.packets.read_ephemeral_packet_direct().unwrap();
         self.auth.parse_client_handshake_packet(pkg.as_slice(), false);
-        info!("{:?}", pkg.as_slice());
-        info!("{}", self.auth);
+        debug!("{:?}", pkg.as_slice());
+        debug!("{}", self.auth);
         // todo tls
         self.packets.write_ok_packet(0, 0, self.greeting.status_flag(), 0);
         loop {
@@ -67,7 +67,7 @@ impl Connection {
     }
     fn write_handshake_v10(&mut self) {
         let pkg = self.greeting.write_handshake_v10(false).unwrap();
-        info!("handshake:{:?}", pkg.as_slice());
+        debug!("handshake:{:?}", pkg.as_slice());
         self.packets.write_packet(pkg.as_slice());
     }
 }
