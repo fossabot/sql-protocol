@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::sql_type::SqlResult;
 
 pub trait Handler: Send + Sync {
-    // NewConnection is called when a connection is created.
+    // new_connection is called when a connection is created.
     // The handler can decide to set StatusFlags that will
     // be returned by the handshake methods.
     // In particular, ServerStatusAutocommit might be set.
