@@ -1,17 +1,12 @@
 use std::net::TcpStream;
 use std::sync::Arc;
-use std::io::{Write, Read};
-use std::io;
 
-use crate::proto::{Greeting, Auth};
+use crate::errors::ProtoResult;
+use crate::proto::packets::Packets;
 use crate::proto::Handler;
-use crate::constants::PacketType;
-use crate::errors::{ProtoError, ProtoResult};
+use crate::proto::{Auth, Greeting};
 
 use dakv_logger::prelude::*;
-use byteorder::{ReadBytesExt, LittleEndian};
-use crate::proto::packets::Packets;
-
 
 pub struct Connection {
     id: u32,
@@ -40,7 +35,8 @@ impl Connection {
 
     pub fn unpack_auth(&mut self) -> ProtoResult<()> {
         let payload = self.packets.next();
-        self.auth.parse_client_handshake_packet(payload.unwrap().as_slice(), true)?;
+        self.auth
+            .parse_client_handshake_packet(payload.unwrap().as_slice(), true)?;
         Ok(())
     }
 
@@ -53,13 +49,19 @@ impl Connection {
         // todo tls
         self.write_handshake_v10();
         let pkg = self.packets.read_ephemeral_packet_direct().unwrap();
-        self.auth.parse_client_handshake_packet(pkg.as_slice(), false);
+        self.auth
+            .parse_client_handshake_packet(pkg.as_slice(), false);
         debug!("{:?}", pkg.as_slice());
         debug!("{}", self.auth);
         // todo tls
-        self.packets.write_ok_packet(0, 0, self.greeting.status_flag(), 0);
+        self.packets
+            .write_ok_packet(0, 0, self.greeting.status_flag(), 0);
         loop {
-            let result: ProtoResult<()> = self.packets.handle_next_command(handler.clone(), self.greeting.status_flag(), self.greeting.capability());
+            let result: ProtoResult<()> = self.packets.handle_next_command(
+                handler.clone(),
+                self.greeting.status_flag(),
+                self.greeting.capability(),
+            );
             if result.is_err() {
                 return;
             }

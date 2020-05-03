@@ -1,10 +1,10 @@
-mod greeting;
 mod auth;
-mod packets;
-mod listener;
 mod connection;
+mod greeting;
+mod listener;
+mod packets;
 
-pub use listener::{Handler, Listener};
+pub use auth::Auth;
 pub use connection::Connection;
 pub use greeting::Greeting;
-pub use auth::Auth;
+pub use listener::{Handler, Listener};

@@ -145,36 +145,81 @@ impl Value {
 }
 
 lazy_static! {
-    static ref TYPE_TO_MYSQL: HashMap<i32, (i64,i64)> = {
+    static ref TYPE_TO_MYSQL: HashMap<i32, (i64, i64)> = {
         let mut m = HashMap::new();
         m.insert(MysqlType::TypeInt8 as i32, (1, 0));
-        m.insert(MysqlType::TypeUint8 as i32, (1, MysqlFlag::MysqlUnsigned as i64));
+        m.insert(
+            MysqlType::TypeUint8 as i32,
+            (1, MysqlFlag::MysqlUnsigned as i64),
+        );
         m.insert(MysqlType::TypeInt16 as i32, (2, 0));
-        m.insert(MysqlType::TypeUint16 as i32, (2, MysqlFlag::MysqlUnsigned as i64));
+        m.insert(
+            MysqlType::TypeUint16 as i32,
+            (2, MysqlFlag::MysqlUnsigned as i64),
+        );
         m.insert(MysqlType::TypeInt32 as i32, (3, 0));
-        m.insert(MysqlType::TypeUint32 as i32, (3, MysqlFlag::MysqlUnsigned as i64));
+        m.insert(
+            MysqlType::TypeUint32 as i32,
+            (3, MysqlFlag::MysqlUnsigned as i64),
+        );
         m.insert(MysqlType::TypeFloat32 as i32, (4, 0));
         m.insert(MysqlType::TypeFloat64 as i32, (5, 0));
-        m.insert(MysqlType::TypeNullType as i32, (6, MysqlFlag::MysqlBinary as i64));
+        m.insert(
+            MysqlType::TypeNullType as i32,
+            (6, MysqlFlag::MysqlBinary as i64),
+        );
         m.insert(MysqlType::TypeTimestamp as i32, (7, 0));
         m.insert(MysqlType::TypeInt64 as i32, (8, 0));
-        m.insert(MysqlType::TypeUint64 as i32, (8, MysqlFlag::MysqlUnsigned as i64));
+        m.insert(
+            MysqlType::TypeUint64 as i32,
+            (8, MysqlFlag::MysqlUnsigned as i64),
+        );
         m.insert(MysqlType::TypeInt24 as i32, (9, 0));
-        m.insert(MysqlType::TypeUint24 as i32, (9, MysqlFlag::MysqlUnsigned as i64));
-        m.insert(MysqlType::TypeDate as i32, (10, MysqlFlag::MysqlBinary as i64));
-        m.insert(MysqlType::TypeTime as i32, (11, MysqlFlag::MysqlBinary as i64));
-        m.insert(MysqlType::TypeDatetime as i32, (12, MysqlFlag::MysqlBinary as i64));
-        m.insert(MysqlType::TypeYear as i32, (13, MysqlFlag::MysqlUnsigned as i64));
-        m.insert(MysqlType::TypeBit as i32, (16, MysqlFlag::MysqlUnsigned as i64));
+        m.insert(
+            MysqlType::TypeUint24 as i32,
+            (9, MysqlFlag::MysqlUnsigned as i64),
+        );
+        m.insert(
+            MysqlType::TypeDate as i32,
+            (10, MysqlFlag::MysqlBinary as i64),
+        );
+        m.insert(
+            MysqlType::TypeTime as i32,
+            (11, MysqlFlag::MysqlBinary as i64),
+        );
+        m.insert(
+            MysqlType::TypeDatetime as i32,
+            (12, MysqlFlag::MysqlBinary as i64),
+        );
+        m.insert(
+            MysqlType::TypeYear as i32,
+            (13, MysqlFlag::MysqlUnsigned as i64),
+        );
+        m.insert(
+            MysqlType::TypeBit as i32,
+            (16, MysqlFlag::MysqlUnsigned as i64),
+        );
         m.insert(MysqlType::TypeJson as i32, (245, 0));
         m.insert(MysqlType::TypeDecimal as i32, (246, 0));
         m.insert(MysqlType::TypeText as i32, (252, 0));
-        m.insert(MysqlType::TypeBlob as i32, (252, MysqlFlag::MysqlBinary as i64));
+        m.insert(
+            MysqlType::TypeBlob as i32,
+            (252, MysqlFlag::MysqlBinary as i64),
+        );
         m.insert(MysqlType::TypeVarchar as i32, (253, 0));
-        m.insert(MysqlType::TypeVarBinary as i32, (253, MysqlFlag::MysqlBinary as i64));
+        m.insert(
+            MysqlType::TypeVarBinary as i32,
+            (253, MysqlFlag::MysqlBinary as i64),
+        );
         m.insert(MysqlType::TypeChar as i32, (254, 0));
-        m.insert(MysqlType::TypeBinary as i32, (254, MysqlFlag::MysqlBinary as i64));
-        m.insert(MysqlType::TypeEnum as i32, (254, MysqlFlag::MysqlEnum as i64));
+        m.insert(
+            MysqlType::TypeBinary as i32,
+            (254, MysqlFlag::MysqlBinary as i64),
+        );
+        m.insert(
+            MysqlType::TypeEnum as i32,
+            (254, MysqlFlag::MysqlEnum as i64),
+        );
         m.insert(MysqlType::TypeSet as i32, (254, MysqlFlag::MysqlSet as i64));
         m.insert(MysqlType::TypeGeometry as i32, (255, 0));
         m
@@ -185,9 +230,9 @@ pub fn type_to_mysql(typ: Type) -> (i64, i64) {
     // Return (type, flag), flag could be zero
     let result: Option<&(i64, i64)> = TYPE_TO_MYSQL.get(&typ);
     return match result {
-        Some(s) => {
-            (s.0, s.1)
+        Some(s) => (s.0, s.1),
+        _ => {
+            panic!("Unexpected");
         }
-        _ => { panic!("Unexpected"); }
     };
 }

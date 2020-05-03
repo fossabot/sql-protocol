@@ -1,5 +1,5 @@
-use std::result;
 use std::error;
+use std::result;
 /// A shortcut to box an error.
 #[macro_export]
 macro_rules! box_err {

@@ -1,9 +1,17 @@
-use crate::constants::CapabilityFlag::{CapabilityClientProtocol41, CapabilityClientLongPassword, CapabilityClientLongFlag, CapabilityClientTransactions, CapabilityClientMultiStatements, CapabilityClientPluginAuth, CapabilityClientDeprecateEOF, CapabilityClientSecureConnection, CapabilityClientConnectWithDB, CapabilityClientFoundRows, CapabilityClientMultiResults, CapabilityClientPluginAuthLenencClientData, CapabilityClientConnAttr};
+use crate::constants::CapabilityFlag::{
+    CapabilityClientConnAttr, CapabilityClientConnectWithDB,
+    CapabilityClientDeprecateEOF, CapabilityClientFoundRows, CapabilityClientLongFlag,
+    CapabilityClientLongPassword, CapabilityClientMultiResults,
+    CapabilityClientMultiStatements, CapabilityClientPluginAuth,
+    CapabilityClientPluginAuthLenencClientData, CapabilityClientProtocol41,
+    CapabilityClientSecureConnection, CapabilityClientTransactions,
+};
 
 // MAX_PACKET_SIZE is the maximum payload length of a packet the server supports.
 pub const MAX_PACKET_SIZE: usize = (1 << 24) - 1;
-// PROTOCOL_VERSION is the current version of the protocol.
-const PROTOCOL_VERSION: i8 = 10;
+// PROTOCOL_VERSION is current version of the protocol.
+// Always 10.
+pub const PROTOCOL_VERSION: u8 = 10;
 
 // MYSQL_NATIVE_PASSWORD uses a salt and transmits a hash on the wire.
 pub const MYSQL_NATIVE_PASSWORD: &'static str = "mysql_native_password";
@@ -11,7 +19,6 @@ pub const MYSQL_NATIVE_PASSWORD: &'static str = "mysql_native_password";
 pub const MYSQL_CLEAR_PASSWORD: &'static str = "mysql_clear_password";
 // MYSQL_DIALOG uses the dialog plugin on the client side. It transmits data in the clear.
 pub const MYSQL_DIALOG: &'static str = "dialog";
-
 
 // See http://dev.mysql.com/doc/internals/en/character-set.html#packet-Protocol::CharacterSet
 pub const CHARACTER_SET_UTF8: u8 = 33;
@@ -23,7 +30,6 @@ pub const SERVER_STATUS_AUTOCOMMIT: u16 = 0x0002;
 pub const OK_PACKET: u8 = 0x00;
 pub const ERR_PACKET: u8 = 0xff;
 pub const EOF_PACKET: u8 = 0xff;
-
 
 //flags
 pub const SERVER_MORE_RESULTS_EXISTS: u16 = 0x0008;
@@ -161,7 +167,6 @@ pub enum PacketType {
     ComResetConnection,
 }
 
-
 impl Into<&'static str> for PacketType {
     fn into(self) -> &'static str {
         return match self {
@@ -200,7 +205,6 @@ impl Into<&'static str> for PacketType {
         };
     }
 }
-
 
 impl ToString for PacketType {
     fn to_string(&self) -> String {
@@ -283,7 +287,9 @@ impl From<u64> for PacketType {
             0x1d => PacketType::ComDaemon,
             0x1e => PacketType::ComBinlogDumpGtid,
             0x1f => PacketType::ComResetConnection,
-            _ => { panic!("Unknown packet type"); }
+            _ => {
+                panic!("Unknown packet type");
+            }
         };
     }
 }
@@ -291,7 +297,7 @@ impl From<u64> for PacketType {
 macro_rules! impl_from {
     ($t:ty) => {
         impl From<$t> for PacketType {
-            fn from(v: $t) -> Self{
+            fn from(v: $t) -> Self {
                 (v as u64).into()
             }
         }
@@ -302,7 +308,6 @@ impl_from!(u8);
 impl_from!(u16);
 impl_from!(u32);
 impl_from!(usize);
-
 
 // Error codes for client-side errors.
 // Originally found in include/mysql/errmsg.h and
@@ -632,40 +637,45 @@ fn convert_character_value(c: &str) -> i32 {
         "geostd8" => 92,
         "cp932" => 95,
         "eucjpms" => 97,
-        _ => { panic!("Unexpected character"); }
+        _ => {
+            panic!("Unexpected character");
+        }
     };
 }
 
 fn is_conn_err(num: i32) -> bool {
-    (num >= ClientError::CRUnknownError as i32 && num <= ClientError::CRNamedPipeStateError as i32) || num == ServerError::ERQueryInterrupted as i32
+    (num >= ClientError::CRUnknownError as i32
+        && num <= ClientError::CRNamedPipeStateError as i32)
+        || num == ServerError::ERQueryInterrupted as i32
 }
 
-pub const DEFAULT_CLIENT_CAPABILITY: u32 = CapabilityClientLongPassword as u32 |
-    CapabilityClientLongFlag as u32 |
-    CapabilityClientProtocol41 as u32 |
-    CapabilityClientTransactions as u32 |
-    CapabilityClientMultiStatements as u32 |
-    CapabilityClientPluginAuth as u32 |
-    CapabilityClientDeprecateEOF as u32 |
-    CapabilityClientSecureConnection as u32;
+pub const DEFAULT_CLIENT_CAPABILITY: u32 = CapabilityClientLongPassword as u32
+    | CapabilityClientLongFlag as u32
+    | CapabilityClientProtocol41 as u32
+    | CapabilityClientTransactions as u32
+    | CapabilityClientMultiStatements as u32
+    | CapabilityClientPluginAuth as u32
+    | CapabilityClientDeprecateEOF as u32
+    | CapabilityClientSecureConnection as u32;
 
-pub const DEFAULT_SERVER_CAPABILITY: u32 = CapabilityClientLongPassword as u32 |
-    CapabilityClientFoundRows as u32 |
-    CapabilityClientLongFlag as u32 |
-    CapabilityClientConnectWithDB as u32 |
-    CapabilityClientProtocol41 as u32 |
-    CapabilityClientTransactions as u32 |
-    CapabilityClientSecureConnection as u32 |
-    CapabilityClientMultiStatements as u32 |
-    CapabilityClientMultiResults as u32 |
-    CapabilityClientPluginAuth as u32 |
-    CapabilityClientPluginAuthLenencClientData as u32 |
-    CapabilityClientDeprecateEOF as u32 |
-    CapabilityClientConnAttr as u32;
+pub const DEFAULT_SERVER_CAPABILITY: u32 = CapabilityClientLongPassword as u32
+    | CapabilityClientFoundRows as u32
+    | CapabilityClientLongFlag as u32
+    | CapabilityClientConnectWithDB as u32
+    | CapabilityClientProtocol41 as u32
+    | CapabilityClientTransactions as u32
+    | CapabilityClientSecureConnection as u32
+    | CapabilityClientMultiStatements as u32
+    | CapabilityClientMultiResults as u32
+    | CapabilityClientPluginAuth as u32
+    | CapabilityClientPluginAuthLenencClientData as u32
+    | CapabilityClientDeprecateEOF as u32
+    | CapabilityClientConnAttr as u32;
 
-pub const DEFAULT_SALT: &'static [u8; 20] = &[0x77, 0x63, 0x6a, 0x6d, 0x61, 0x22, 0x23, 0x27, // first part
-    0x38, 0x26, 0x55, 0x58, 0x3b, 0x5d, 0x44, 0x78, 0x53, 0x73, 0x6b, 0x41];
-
+pub const DEFAULT_SALT: &'static [u8; 20] = &[
+    0x77, 0x63, 0x6a, 0x6d, 0x61, 0x22, 0x23, 0x27, // first part
+    0x38, 0x26, 0x55, 0x58, 0x3b, 0x5d, 0x44, 0x78, 0x53, 0x73, 0x6b, 0x41,
+];
 
 pub enum TLSVersion {
     VersionTLS10 = 0x0301,
@@ -683,7 +693,7 @@ impl From<u64> for TLSVersion {
             0x0303 => TLSVersion::VersionTLS12,
             0x0304 => TLSVersion::VersionTLS13,
             0x0300 => TLSVersion::VersionSSL30,
-            _ => { panic!("Unexpected version") }
+            _ => panic!("Unexpected version"),
         }
     }
 }
@@ -691,14 +701,14 @@ impl From<u64> for TLSVersion {
 macro_rules! impl_from_d {
     ($t:ty,$s:ty) => {
         impl From<$t> for $s {
-            fn from(v: $t) -> Self{
+            fn from(v: $t) -> Self {
                 (v as u64).into()
             }
         }
     };
 }
 
-impl_from_d!(u8,TLSVersion);
-impl_from_d!(u16,TLSVersion);
-impl_from_d!(u32,TLSVersion);
-impl_from_d!(usize,TLSVersion);
+impl_from_d!(u8, TLSVersion);
+impl_from_d!(u16, TLSVersion);
+impl_from_d!(u32, TLSVersion);
+impl_from_d!(usize, TLSVersion);

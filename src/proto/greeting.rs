@@ -1,15 +1,16 @@
-use rand::Rng;
-use crate::constants::{DEFAULT_SERVER_CAPABILITY, CHARACTER_SET_UTF8, SERVER_STATUS_AUTOCOMMIT, MYSQL_NATIVE_PASSWORD};
-use byteorder::{WriteBytesExt, LittleEndian, ReadBytesExt};
-use std::io::{Write, Cursor, Read};
-use crate::proto::auth::ReadUntil;
-use crate::errors::{ProtoError, ProtoResult};
-use crate::constants::CapabilityFlag;
+use std::io::{Cursor, Read, Write};
 use std::{cmp, io};
 
-// PROTOCOL_VERSION is current version of the protocol.
-// Always 10.
-const PROTOCOL_VERSION: u8 = 10;
+use crate::constants::CapabilityFlag;
+use crate::constants::{
+    CHARACTER_SET_UTF8, DEFAULT_SERVER_CAPABILITY, MYSQL_NATIVE_PASSWORD,
+    PROTOCOL_VERSION, SERVER_STATUS_AUTOCOMMIT,
+};
+use crate::errors::{ProtoError, ProtoResult};
+use crate::proto::auth::ReadUntil;
+
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use rand::Rng;
 
 #[derive(Debug, Default)]
 pub struct Greeting {
@@ -100,50 +101,66 @@ impl Greeting {
         }
         unsafe {
             // server version
-            payload.real_read_until(0x00, self.server_version.as_mut_vec())
-                .map_err(|_| { ProtoError::ReadServerVersionError })?;
+            payload
+                .real_read_until(0x00, self.server_version.as_mut_vec())
+                .map_err(|_| ProtoError::ReadServerVersionError)?;
             // connection_id
-            self.connection_id = payload.read_u32::<LittleEndian>()
-                .map_err(|_| { ProtoError::ReadConnectionIdError })?;
+            self.connection_id = payload
+                .read_u32::<LittleEndian>()
+                .map_err(|_| ProtoError::ReadConnectionIdError)?;
             let mut salt1 = vec![0; 8];
             // salt[..8]
-            payload.read(&mut salt1)
-                .map_err(|_| { ProtoError::ReadSaltError })?;
-            payload.read_u8().map_err(|_| { ProtoError::ReadZeroError });
+            payload
+                .read(&mut salt1)
+                .map_err(|_| ProtoError::ReadSaltError)?;
+            payload.read_u8().map_err(|_| ProtoError::ReadZeroError);
 
             // capability flags (lower 2 bytes)
-            let lower_capability = payload.read_u16::<LittleEndian>()
-                .map_err(|_| { ProtoError::ReadCapabilityFlagError })?;
+            let lower_capability = payload
+                .read_u16::<LittleEndian>()
+                .map_err(|_| ProtoError::ReadCapabilityFlagError)?;
             // charset
-            payload.read_u8().map_err(|_| { ProtoError::ReadCharsetError });
+            payload.read_u8().map_err(|_| ProtoError::ReadCharsetError);
             // status flag
-            self.status_flag = payload.read_u16::<LittleEndian>()
-                .map_err(|_| { ProtoError::ReadStatusFlagError })?;
+            self.status_flag = payload
+                .read_u16::<LittleEndian>()
+                .map_err(|_| ProtoError::ReadStatusFlagError)?;
             // capability flags (upper 2 bytes)
-            let upper_capability = payload.read_u16::<LittleEndian>()
-                .map_err(|_| { ProtoError::ReadCapabilityFlagError })?;
-            self.capability = ((upper_capability as u32) << 16) | lower_capability as u32;
-            let auth_plugin_part1_len = 0;
-            if (self.capability & CapabilityFlag::CapabilityClientPluginAuth as u32) > 0 {
-                let auth_plugin_part1_len = payload.read_u8()
-                    .map_err(|_| { ProtoError::ReadAuthPluginLenError })?;
+            let upper_capability = payload
+                .read_u16::<LittleEndian>()
+                .map_err(|_| ProtoError::ReadCapabilityFlagError)?;
+            self.capability =
+                ((upper_capability as u32) << 16) | lower_capability as u32;
+            let mut auth_plugin_part1_len = 0;
+            if (self.capability & CapabilityFlag::CapabilityClientPluginAuth as u32) > 0
+            {
+                auth_plugin_part1_len = payload
+                    .read_u8()
+                    .map_err(|_| ProtoError::ReadAuthPluginLenError)?;
             } else {
-                payload.read_u8().map_err(|_| { ProtoError::ReadZeroError });
+                payload.read_u8().map_err(|_| ProtoError::ReadZeroError)?;
             }
             // Read 10 zeros
             let mut trailer = [0; 10];
-            if payload.read(&mut trailer).map_err(|_| { ProtoError::ReadZeroError })? != trailer.len() {
+            if payload
+                .read(&mut trailer)
+                .map_err(|_| ProtoError::ReadZeroError)?
+                != trailer.len()
+            {
                 return Err(ProtoError::ReadZeroError);
             }
             // string[$len]: auth-plugin-data-part-2 ($len=MAX(13, length of auth-plugin-data - 8))
-            if self.capability & CapabilityFlag::CapabilityClientSecureConnection as u32 > 0 {
-                let mut read: i32 = auth_plugin_part1_len - 8;
+            if self.capability & CapabilityFlag::CapabilityClientSecureConnection as u32
+                > 0
+            {
+                let mut read = auth_plugin_part1_len - 8;
                 if read < 0 || read > 13 {
                     read = 13;
                 }
                 let mut salt2 = vec![0; read as usize];
-                payload.read(salt2.as_mut_slice())
-                    .map_err(|_| { ProtoError::ReadSaltError })?;
+                payload
+                    .read(salt2.as_mut_slice())
+                    .map_err(|_| ProtoError::ReadSaltError)?;
                 if salt2[read as usize - 1] != 0 {
                     return Err(ProtoError::ReadSaltError);
                 }
@@ -154,7 +171,6 @@ impl Greeting {
         Ok(())
     }
 }
-
 
 impl cmp::PartialEq for Greeting {
     fn eq(&self, other: &Self) -> bool {
@@ -169,9 +185,9 @@ impl cmp::PartialEq for Greeting {
 
 #[cfg(test)]
 mod tests {
-    use crate::proto::Greeting;
-    use crate::constants::{MYSQL_NATIVE_PASSWORD, DEFAULT_SERVER_CAPABILITY};
     use crate::constants::CapabilityFlag::CapabilityClientPluginAuth;
+    use crate::constants::{DEFAULT_SERVER_CAPABILITY, MYSQL_NATIVE_PASSWORD};
+    use crate::proto::Greeting;
 
     #[test]
     fn test_greeting1() {
@@ -187,7 +203,8 @@ mod tests {
     fn test_greeting2() {
         let mut expected = box Greeting::default();
         expected.salt = vec![0; 20];
-        expected.capability = DEFAULT_SERVER_CAPABILITY & !(CapabilityClientPluginAuth as u32);
+        expected.capability =
+            DEFAULT_SERVER_CAPABILITY & !(CapabilityClientPluginAuth as u32);
         assert_eq!(expected.capability, 16884237);
         let mut actual = box Greeting::default();
         let data = expected.write_handshake_v10(false).unwrap();
