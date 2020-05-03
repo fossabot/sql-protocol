@@ -2,7 +2,6 @@ use byteorder::{WriteBytesExt, LittleEndian, ReadBytesExt};
 use std::io::{Read, Write};
 use std::io;
 use std::net::TcpStream;
-use std::ptr;
 
 use dakv_logger::prelude::*;
 
@@ -74,37 +73,17 @@ impl Packets {
         Ok(vec![])
     }
 
+    /// ---- For public method, return ProtoResult, private method just return io::Result<()>
+    /// Attempt to read a packet from socket.
     pub fn read_ephemeral_packet_direct(&mut self) -> ProtoResult<Vec<u8>> {
-        let length = self.read_header().unwrap();
-        return match length {
-            0 => {
-                Err(ProtoError::EmptyPacketError)
-            }
-            l if l > MAX_PACKET_SIZE => {
-                Err(ProtoError::MultiPacketNotSupport)
-            }
-            _ => {
-                let mut c = vec![0; length];
-                self.read_content(length, c.as_mut_slice()).unwrap();
-                Ok(c)
-            }
-        };
-    }
-
-    pub fn read_ephemeral_packet(&mut self) -> ProtoResult<Vec<u8>> {
-        let length = self.read_header().unwrap();
+        let length = self.read_header()?;
         return match length {
             0 => {
                 debug!("Bad packet length");
                 Ok(vec![])
             }
             l if l > MAX_PACKET_SIZE => {
-                let mut c = vec![0; length];
-                self.read_content(length, c.as_mut_slice())?;
-                loop {
-                    let next = self.read_one_packet()?;
-                }
-                Ok(c)
+                Err(ProtoError::MultiPacketNotSupport)
             }
             _ => {
                 let mut c = vec![0; length];
@@ -114,12 +93,33 @@ impl Packets {
         };
     }
 
-    pub fn read_header(&mut self) -> io::Result<usize> {
+    pub fn read_ephemeral_packet(&mut self) -> ProtoResult<Vec<u8>> {
+        let length = self.read_header()?;
+        return match length {
+            0 => {
+                debug!("Bad packet length");
+                Ok(vec![])
+            }
+            l if l > MAX_PACKET_SIZE => {
+                let mut c = Vec::with_capacity(length);
+                self.read_content(length, c.as_mut_slice())?;
+                self.read_batch_packets(&mut c)?;
+                Ok(c)
+            }
+            _ => {
+                let mut c = Vec::with_capacity(length);
+                self.read_content(length, c.as_mut_slice())?;
+                Ok(c)
+            }
+        };
+    }
+
+    fn read_header(&mut self) -> io::Result<usize> {
         let mut header = [0; 4];
         if let Some(inner) = &mut self.stream {
             return match inner.read_exact(&mut header) {
-                Ok(n) => {
-                    debug!("{:?}", header);
+                Ok(_) => {
+                    debug!("Header:{:?}", header);
                     let sequence = header[3];
                     if sequence != self.sequence_id {
                         error!("current sequence:{}, get sequence:{}", self.sequence_id, sequence);
@@ -129,26 +129,52 @@ impl Packets {
                     Ok((header[0] as usize) | (header[1] as usize) << 8 | (header[2] as usize) << 16)
                 }
                 _ => {
-                    Err(io::Error::new(io::ErrorKind::InvalidData, "Read header failed"))
+                    Err(io::Error::new(io::ErrorKind::InvalidData, "Read packet header failed"))
                 }
             };
         }
         panic!("Stream is empty");
     }
 
-    pub fn read_one_packet(&mut self) -> io::Result<Vec<u8>> {
+    fn read_one_packet(&mut self) -> io::Result<Vec<u8>> {
         let length = self.read_header()?;
         return match length {
             0 => { Ok(vec![]) }
             _ => {
-                let mut data = vec![0; length];
+                let mut data = Vec::with_capacity(length);
                 self.read_content(length, data.as_mut_slice())?;
                 Ok(data)
             }
         };
     }
 
-    pub fn read_content(&mut self, len: usize, data: &mut [u8]) -> io::Result<()> {
+    fn read_packets(&mut self) -> io::Result<Vec<u8>> {
+        // Optimize for a single packet case.
+        let mut data = self.read_one_packet()?;
+        if data.len() < MAX_PACKET_SIZE {
+            return Ok(data);
+        }
+        self.read_batch_packets(&mut data)?;
+        Ok(data)
+    }
+
+    fn read_batch_packets(&mut self, data: &mut Vec<u8>) -> io::Result<()> {
+        // Read all packets
+        loop {
+            let next = self.read_one_packet()?;
+            if next.len() == 0 {
+                break;
+            }
+            data.extend_from_slice(next.as_slice());
+            if next.len() < MAX_PACKET_SIZE {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    /// Read limit bytes into data.
+    fn read_content(&mut self, len: usize, data: &mut [u8]) -> io::Result<()> {
         if let Some(inner) = &mut self.stream {
             inner.take(len as u64)
                 .read(data)?;
@@ -156,26 +182,8 @@ impl Packets {
         Ok(())
     }
 
-    // todo used
-    pub fn write(&mut self, payload: &[u8]) -> io::Result<()> {
-        let mut buf = vec![];
-        // length of payload
-        buf.write_u24::<LittleEndian>(payload.len() as u32)?;
-        // sequence id
-        buf.write_u8(self.sequence_id)?;
-        // payload
-        buf.write(payload)?;
-        if let Some(inner) = &mut self.stream {
-            inner.write(buf.as_slice())?;
-        } else {
-            panic!("Stream is empty");
-        }
-        self.sequence_id += 1;
-        Ok(())
-    }
-
     pub fn write_fields(&mut self, result: SqlResult) -> io::Result<()> {
-        let mut data = Vec::with_capacity(1024 * 8);
+        let mut data = Vec::with_capacity(1024);
         // Write length of fields
         let count = result.fields.len();
         let len = len_enc_int_size(count as u64);
@@ -242,7 +250,7 @@ impl Packets {
             } else {
                 let l = val.val.len();
                 data.write_len_int(l as u64)?;
-                data.write(val.val.as_slice());
+                data.write(val.val.as_slice())?;
             }
         }
 
@@ -255,6 +263,24 @@ impl Packets {
         self.write_err_packet(ServerError::ERUnknownError as u16, StateError::SSUnknownSQLState.into(), "Unknown error".to_string())
     }
 
+    pub fn write_ok_packet_with_eof_header(&mut self, affected_rows: u64, last_insert_id: u64, flags: u16, warnings: u16) -> io::Result<()> {
+        let mut inner = Vec::with_capacity(
+            1 +
+                len_enc_int_size(affected_rows) +
+                len_enc_int_size(last_insert_id) +
+                2 + 2);
+
+        inner.write_u8(EOF_PACKET)?;
+        // Affected rows
+        inner.write_len_int(affected_rows)?;
+        // Last insert id
+        inner.write_len_int(last_insert_id)?;
+
+        inner.write_u16::<LittleEndian>(flags)?;
+        inner.write_u16::<LittleEndian>(warnings)?;
+        self.write_packet(inner.as_slice())
+    }
+
     pub fn write_end_result(&mut self, more: bool, affected_rows: u64, last_insert_id: u64, warnings: u16) -> io::Result<()> {
         let mut flags = self.status_flags;
         if more {
@@ -262,6 +288,8 @@ impl Packets {
         }
         if self.capability & CapabilityFlag::CapabilityClientDeprecateEOF as u32 == 0 {
             self.write_eof_packet(flags, warnings)?;
+        } else {
+            self.write_ok_packet_with_eof_header(affected_rows, last_insert_id, flags, warnings)?;
         }
         Ok(())
     }
@@ -398,12 +426,12 @@ impl Packets {
                                 self.capability &= !(CapabilityFlag::CapabilityClientMultiStatements as u32);
                             }
                             _ => {
-                                self.write_err_packet(ServerError::ERUnknownComError as u16, StateError::SSUnknownComError.into(), "Unknown set option".to_string());
+                                self.write_err_packet(ServerError::ERUnknownComError as u16, StateError::SSUnknownComError.into(), "Unknown set option".to_string())?;
                             }
                         }
                     }
                     Err(_) => {
-                        self.write_err_packet(ServerError::ERUnknownComError as u16, StateError::SSUnknownComError.into(), "Error parsing set option".to_string());
+                        self.write_err_packet(ServerError::ERUnknownComError as u16, StateError::SSUnknownComError.into(), "Error parsing set option".to_string())?;
                     }
                 }
             }
@@ -415,7 +443,7 @@ impl Packets {
                 let cmd: PacketType = pt.into();
                 let cmd_str: &'static str = cmd.into();
                 debug!("Unknown command {}", cmd_str);
-                self.write_err_packet(ServerError::ERUnknownComError as u16, StateError::SSUnknownComError.into(), format!("Unknown command: {}", cmd_str));
+                self.write_err_packet(ServerError::ERUnknownComError as u16, StateError::SSUnknownComError.into(), format!("Unknown command: {}", cmd_str))?;
             }
         }
         Ok(())
@@ -497,4 +525,17 @@ fn len_enc_int_size(n: u64) -> usize {
 
 fn len_enc_str_size(v: &String) -> usize {
     len_enc_int_size(v.len() as u64) + v.len()
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::proto::packets::Packets;
+
+    #[test]
+    fn test_auth() {
+        let mut p = Packets::new();
+        p.write_ok_packet(12, 34, 56, 78);
+
+        p.read
+    }
 }
