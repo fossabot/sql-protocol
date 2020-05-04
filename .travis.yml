@@ -62,6 +62,7 @@ script:
   - cargo +nightly fmt -- --check --config-path rustfmt.toml
 
 after_success:
+  - rm Cargo.lock
   - cargo coveralls --verbose
 
 env:
