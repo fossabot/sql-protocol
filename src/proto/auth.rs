@@ -144,7 +144,8 @@ impl Auth {
                 }
                 // multi statements support
                 if client_flag & CapabilityFlag::CapabilityClientMultiStatements as u32 > 0 {
-                    self.capability_flags |= CapabilityFlag::CapabilityClientMultiStatements as u32;
+                    self.capability_flags |=
+                        CapabilityFlag::CapabilityClientMultiStatements as u32;
                 }
             }
             Err(_) => {
@@ -216,7 +217,8 @@ impl Auth {
                     .map_err(|_| ProtoError::ReadAuthResponseError)?;
             }
             // Parse database name
-            if (self.capability_flags & CapabilityFlag::CapabilityClientConnectWithDB as u32) != 0 {
+            if (self.capability_flags & CapabilityFlag::CapabilityClientConnectWithDB as u32) != 0
+            {
                 payload
                     .real_read_until(0x00, self.database.as_mut_vec())
                     .map_err(|_| ProtoError::ReadDatabaseError)?;
@@ -317,13 +319,10 @@ mod tests {
         assert_eq!(auth.auth_method, String::from(MYSQL_NATIVE_PASSWORD));
         assert_eq!(auth.database, "abc".to_string());
         assert_eq!(auth.user, "root".to_string());
-        assert_eq!(
-            auth.auth_response,
-            vec![
-                0x0e, 0xb4, 0xdd, 0xb5, 0x5b, 0x64, 0xf8, 0x54, 0x40, 0xfd, 0xf3, 0x45, 0xfa, 0x37,
-                0x12, 0x20, 0x20, 0xda, 0x38, 0xaa
-            ]
-        );
+        assert_eq!(auth.auth_response, vec![
+            0x0e, 0xb4, 0xdd, 0xb5, 0x5b, 0x64, 0xf8, 0x54, 0x40, 0xfd, 0xf3, 0x45, 0xfa, 0x37,
+            0x12, 0x20, 0x20, 0xda, 0x38, 0xaa
+        ]);
     }
 
     #[test]

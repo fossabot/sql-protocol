@@ -1,7 +1,7 @@
 use crate::constants::CapabilityFlag::{
     CapabilityClientConnAttr, CapabilityClientConnectWithDB, CapabilityClientDeprecateEOF,
-    CapabilityClientFoundRows, CapabilityClientLongFlag, CapabilityClientLongPassword,
-    CapabilityClientMultiResults, CapabilityClientMultiStatements, CapabilityClientPluginAuth,
+    CapabilityClientLongFlag, CapabilityClientLongPassword, CapabilityClientMultiResults,
+    CapabilityClientMultiStatements, CapabilityClientPluginAuth,
     CapabilityClientPluginAuthLenencClientData, CapabilityClientProtocol41,
     CapabilityClientSecureConnection, CapabilityClientTransactions,
 };
@@ -657,7 +657,6 @@ pub const DEFAULT_CLIENT_CAPABILITY: u32 = CapabilityClientLongPassword as u32
     | CapabilityClientSecureConnection as u32;
 
 pub const DEFAULT_SERVER_CAPABILITY: u32 = CapabilityClientLongPassword as u32
-    | CapabilityClientFoundRows as u32
     | CapabilityClientLongFlag as u32
     | CapabilityClientConnectWithDB as u32
     | CapabilityClientProtocol41 as u32

@@ -43,7 +43,7 @@ impl Connection {
     pub fn handle(&mut self, stream: TcpStream, handler: Arc<dyn Handler>) {
         debug!("Read request ...");
 
-        self.packets.set_stream(stream);
+        self.packets.set_stream(Box::new(stream));
         // todo tls
         self.write_handshake_v10();
         let pkg = self.packets.read_ephemeral_packet_direct().unwrap();

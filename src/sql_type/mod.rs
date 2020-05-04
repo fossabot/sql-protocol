@@ -144,6 +144,7 @@ impl Value {
     }
 }
 
+// fixme macro bodies max length
 lazy_static! {
     static ref TYPE_TO_MYSQL: HashMap<i32, (i64, i64)> = {
         let mut m = HashMap::new();

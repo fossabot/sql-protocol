@@ -157,8 +157,8 @@ impl Greeting {
             }
             // string[$len]: auth-plugin-data-part-2 ($len=MAX(13, length of auth-plugin-data - 8))
             if self.capability & CapabilityFlag::CapabilityClientSecureConnection as u32 > 0 {
-                let mut read = auth_plugin_part1_len - 8;
-                if read > 13 {
+                let mut read = auth_plugin_part1_len as i32 - 8;
+                if read < 0 || read > 13 {
                     read = 13;
                 }
                 let mut salt2 = vec![0; read as usize];
@@ -208,7 +208,7 @@ mod tests {
         let mut expected = box Greeting::default();
         expected.salt = vec![0; 20];
         expected.capability = DEFAULT_SERVER_CAPABILITY & !(CapabilityClientPluginAuth as u32);
-        assert_eq!(expected.capability, 16884237);
+        assert_eq!(expected.capability, 20161037);
         let mut actual = box Greeting::default();
         let data = expected.write_handshake_v10(false).unwrap();
         let result = actual.parse_client_handshake_packet(data.as_slice());

@@ -1,6 +1,5 @@
 use std::io;
 use std::io::{Read, Write};
-use std::net::TcpStream;
 use std::sync::Arc;
 
 use crate::constants::{
@@ -14,11 +13,15 @@ use crate::Handler;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use dakv_logger::prelude::*;
 
+pub trait ReadAndWrite: io::Read + io::Write {}
+
+impl<T> ReadAndWrite for T where T: io::Read + io::Write {}
+
 pub struct Packets {
     sequence_id: u8,
     capability: u32,
     status_flags: u16,
-    stream: Option<TcpStream>,
+    stream: Option<Box<dyn ReadAndWrite>>,
 }
 
 trait WriteLenEncode: WriteBytesExt {
@@ -67,7 +70,7 @@ impl Packets {
         }
     }
 
-    pub fn set_stream(&mut self, stream: TcpStream) {
+    pub fn set_stream(&mut self, stream: Box<dyn ReadAndWrite>) {
         self.stream = Some(stream);
     }
 
@@ -197,7 +200,7 @@ impl Packets {
         let count = result.fields.len();
         let len = len_enc_int_size(count as u64);
         data.write_len_int(len as u64)?;
-        let inner: &mut TcpStream = self.stream.as_mut().unwrap();
+        let inner = self.stream.as_mut().unwrap();
         for f in result.fields {
             let column = Self::write_column_definition(&f)?;
             inner.write_all(column.as_slice())?;
@@ -264,7 +267,7 @@ impl Packets {
             }
         }
 
-        let inner: &mut TcpStream = self.stream.as_mut().unwrap();
+        let inner = self.stream.as_mut().unwrap();
         inner.write_all(data.as_slice())?;
         Ok(())
     }
@@ -320,7 +323,7 @@ impl Packets {
 
     // flags may not be equal to self.status_flags
     pub fn write_eof_packet(&mut self, flags: u16, warnings: u16) -> io::Result<()> {
-        let inner: &mut TcpStream = self.stream.as_mut().unwrap();
+        let inner = self.stream.as_mut().unwrap();
         inner.write_u8(EOF_PACKET)?;
         inner.write_u16::<LittleEndian>(warnings)?;
         inner.write_u16::<LittleEndian>(flags)?;
@@ -583,13 +586,64 @@ fn len_enc_str_size(v: &str) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use crate::constants::OK_PACKET;
     use crate::proto::packets::Packets;
+    use std::cell::RefCell;
+    use std::io;
+
+    struct MockStorage {
+        content: *const RefCell<String>,
+    }
+
+    impl io::Read for MockStorage {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            unsafe {
+                let n = buf.len();
+                let mut data = self.content.as_ref().unwrap().borrow_mut();
+                println!("[Read before]: {:?}", data.as_bytes());
+                let data_len = data.len();
+                if n > data_len {
+                    buf[..data_len].copy_from_slice(data.as_bytes());
+                    data.drain(..data_len);
+                    return Ok(data_len);
+                }
+                buf.copy_from_slice(&data.as_bytes()[..n]);
+                data.drain(..n);
+                println!("[Read after]: {:?}", data.as_bytes());
+                Ok(n)
+            }
+        }
+    }
+
+    impl io::Write for MockStorage {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            unsafe {
+                let mut data = self.content.as_ref().unwrap().borrow_mut();
+                println!("Write before: {:?}", data.as_bytes());
+                data.as_mut_vec().extend_from_slice(buf);
+                println!("Write after: {:?}", data.as_bytes());
+            }
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
 
     #[test]
-    fn test_auth() {
-        let mut p = Packets::new();
-        p.write_ok_packet(12, 34, 56, 78).unwrap();
-        let c = p.read_packets().unwrap();
-        println!("{:?}", c.as_slice());
+    fn test_basic() {
+        let store = RefCell::new(String::default());
+        let mock_client = MockStorage { content: &store };
+        let mock_server = MockStorage { content: &store };
+
+        let mut server = Packets::new();
+        server.set_stream(Box::new(mock_server));
+        server.write_ok_packet(12, 34, 56, 78).unwrap();
+
+        let mut client = Packets::new();
+        client.set_stream(Box::new(mock_client));
+        let data = client.read_packets().unwrap();
+        assert_eq!(data[0], OK_PACKET);
     }
 }
