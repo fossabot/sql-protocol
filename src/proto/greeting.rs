@@ -3,8 +3,8 @@ use std::{cmp, io};
 
 use crate::constants::CapabilityFlag;
 use crate::constants::{
-    CHARACTER_SET_UTF8, DEFAULT_SERVER_CAPABILITY, MYSQL_NATIVE_PASSWORD,
-    PROTOCOL_VERSION, SERVER_STATUS_AUTOCOMMIT,
+    CHARACTER_SET_UTF8, DEFAULT_SERVER_CAPABILITY, MYSQL_NATIVE_PASSWORD, PROTOCOL_VERSION,
+    SERVER_STATUS_AUTOCOMMIT,
 };
 use crate::errors::{ProtoError, ProtoResult};
 use crate::proto::auth::ReadUntil;
@@ -30,8 +30,8 @@ fn byte_rand(min: u64, max: u64) -> u8 {
 impl Greeting {
     pub fn new(connection_id: u32, server_version: String) -> Box<Self> {
         let mut salt = vec![0; 20];
-        for i in 0..salt.len() {
-            salt[i] = byte_rand(1, 123);
+        for item in &mut salt {
+            *item = byte_rand(1, 123);
         }
         box Greeting {
             status_flag: SERVER_STATUS_AUTOCOMMIT,
@@ -61,12 +61,12 @@ impl Greeting {
         // [u8] protocol version
         buf.write_u8(PROTOCOL_VERSION)?;
         // [string] server version
-        buf.write(self.server_version.as_bytes())?;
+        buf.write_all(self.server_version.as_bytes())?;
         buf.write_u8(0)?;
         // [u32] connection id
         buf.write_u32::<LittleEndian>(self.connection_id)?;
         // [string] auth-plugin-data-part-1
-        buf.write(&self.salt[..8])?;
+        buf.write_all(&self.salt[..8])?;
         buf.write_u8(0)?;
         // [u16] capability flags (lower 2 bytes)
         buf.write_u16::<LittleEndian>(self.capability as u16)?;
@@ -79,13 +79,13 @@ impl Greeting {
         // [u8] length of auth-plugin-data
         buf.write_u8(21u8)?;
         // [0;10] reserved (all [00])
-        buf.write(&[0; 10])?;
+        buf.write_all(&[0; 10])?;
         // auth-plugin-data-part-2 ($len=MAX(13, length of auth-plugin-data - 8))
-        buf.write(&self.salt[8..])?;
+        buf.write_all(&self.salt[8..])?;
         buf.write_u8(0)?;
 
         // string[NUL]    auth-plugin name
-        buf.write(MYSQL_NATIVE_PASSWORD.as_ref())?;
+        buf.write_all(MYSQL_NATIVE_PASSWORD.as_ref())?;
         buf.write_u8(0)?;
         Ok(buf)
     }
@@ -97,7 +97,10 @@ impl Greeting {
             Err(_) => {
                 return Err(ProtoError::ReadProtocolVersionError);
             }
-            _ => {} // Always 10
+            Ok(n) => {
+                // Always 10
+                assert_eq!(n, 10);
+            }
         }
         unsafe {
             // server version
@@ -113,14 +116,16 @@ impl Greeting {
             payload
                 .read(&mut salt1)
                 .map_err(|_| ProtoError::ReadSaltError)?;
-            payload.read_u8().map_err(|_| ProtoError::ReadZeroError);
+            payload.read_u8().map_err(|_| ProtoError::ReadZeroError)?;
 
             // capability flags (lower 2 bytes)
             let lower_capability = payload
                 .read_u16::<LittleEndian>()
                 .map_err(|_| ProtoError::ReadCapabilityFlagError)?;
             // charset
-            payload.read_u8().map_err(|_| ProtoError::ReadCharsetError);
+            payload
+                .read_u8()
+                .map_err(|_| ProtoError::ReadCharsetError)?;
             // status flag
             self.status_flag = payload
                 .read_u16::<LittleEndian>()
@@ -129,17 +134,18 @@ impl Greeting {
             let upper_capability = payload
                 .read_u16::<LittleEndian>()
                 .map_err(|_| ProtoError::ReadCapabilityFlagError)?;
-            self.capability =
-                ((upper_capability as u32) << 16) | lower_capability as u32;
-            let mut auth_plugin_part1_len = 0;
-            if (self.capability & CapabilityFlag::CapabilityClientPluginAuth as u32) > 0
-            {
-                auth_plugin_part1_len = payload
-                    .read_u8()
-                    .map_err(|_| ProtoError::ReadAuthPluginLenError)?;
-            } else {
-                payload.read_u8().map_err(|_| ProtoError::ReadZeroError)?;
-            }
+            self.capability = ((upper_capability as u32) << 16) | lower_capability as u32;
+            let auth_plugin_part1_len =
+                if (self.capability & CapabilityFlag::CapabilityClientPluginAuth as u32) > 0 {
+                    payload
+                        .read_u8()
+                        .map_err(|_| ProtoError::ReadAuthPluginLenError)?
+                } else {
+                    payload
+                        .read_u8()
+                        .map_err(|_| ProtoError::ReadAuthPluginLenError)?;
+                    0
+                };
             // Read 10 zeros
             let mut trailer = [0; 10];
             if payload
@@ -150,11 +156,9 @@ impl Greeting {
                 return Err(ProtoError::ReadZeroError);
             }
             // string[$len]: auth-plugin-data-part-2 ($len=MAX(13, length of auth-plugin-data - 8))
-            if self.capability & CapabilityFlag::CapabilityClientSecureConnection as u32
-                > 0
-            {
+            if self.capability & CapabilityFlag::CapabilityClientSecureConnection as u32 > 0 {
                 let mut read = auth_plugin_part1_len - 8;
-                if read < 0 || read > 13 {
+                if read > 13 {
                     read = 13;
                 }
                 let mut salt2 = vec![0; read as usize];
@@ -186,7 +190,7 @@ impl cmp::PartialEq for Greeting {
 #[cfg(test)]
 mod tests {
     use crate::constants::CapabilityFlag::CapabilityClientPluginAuth;
-    use crate::constants::{DEFAULT_SERVER_CAPABILITY, MYSQL_NATIVE_PASSWORD};
+    use crate::constants::DEFAULT_SERVER_CAPABILITY;
     use crate::proto::Greeting;
 
     #[test]
@@ -203,8 +207,7 @@ mod tests {
     fn test_greeting2() {
         let mut expected = box Greeting::default();
         expected.salt = vec![0; 20];
-        expected.capability =
-            DEFAULT_SERVER_CAPABILITY & !(CapabilityClientPluginAuth as u32);
+        expected.capability = DEFAULT_SERVER_CAPABILITY & !(CapabilityClientPluginAuth as u32);
         assert_eq!(expected.capability, 16884237);
         let mut actual = box Greeting::default();
         let data = expected.write_handshake_v10(false).unwrap();

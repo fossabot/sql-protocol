@@ -1,8 +1,7 @@
 use crate::constants::CapabilityFlag::{
-    CapabilityClientConnAttr, CapabilityClientConnectWithDB,
-    CapabilityClientDeprecateEOF, CapabilityClientFoundRows, CapabilityClientLongFlag,
-    CapabilityClientLongPassword, CapabilityClientMultiResults,
-    CapabilityClientMultiStatements, CapabilityClientPluginAuth,
+    CapabilityClientConnAttr, CapabilityClientConnectWithDB, CapabilityClientDeprecateEOF,
+    CapabilityClientFoundRows, CapabilityClientLongFlag, CapabilityClientLongPassword,
+    CapabilityClientMultiResults, CapabilityClientMultiStatements, CapabilityClientPluginAuth,
     CapabilityClientPluginAuthLenencClientData, CapabilityClientProtocol41,
     CapabilityClientSecureConnection, CapabilityClientTransactions,
 };
@@ -209,7 +208,7 @@ impl Into<&'static str> for PacketType {
 impl ToString for PacketType {
     fn to_string(&self) -> String {
         let c: &'static str = (*self).into();
-        format!("{}", c)
+        c.to_string()
     }
 }
 
@@ -644,8 +643,7 @@ fn convert_character_value(c: &str) -> i32 {
 }
 
 fn is_conn_err(num: i32) -> bool {
-    (num >= ClientError::CRUnknownError as i32
-        && num <= ClientError::CRNamedPipeStateError as i32)
+    (num >= ClientError::CRUnknownError as i32 && num <= ClientError::CRNamedPipeStateError as i32)
         || num == ServerError::ERQueryInterrupted as i32
 }
 

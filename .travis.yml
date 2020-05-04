@@ -26,6 +26,7 @@ before_script:
   # Travis installs rust with a non-default "minimal" profile, and advises us
   # to add clippy manually:
   - rustup component add clippy
+  - rustup component add rustfmt
   # Unfortunately, this method often breaks on the nightly channel, where the
   # most recent build might not have all the optional components.
   # We explicitly specify `--profile default` to obtain the most recent nightly
@@ -58,7 +59,7 @@ script:
   - travis-cargo test -- all-features
   # The license_template_path setting we use to verify copyright headers is
   # only available on the nightly rustfmt.
-  - cargo +nightly fmt -- --check --config-path <(echo 'license_template_path = "HEADER"')
+  - cargo +nightly fmt -- --check --config-path rustfmt.toml
 
 after_success:
   - cargo coveralls --verbose

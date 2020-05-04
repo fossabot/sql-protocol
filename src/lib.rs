@@ -1,3 +1,6 @@
+#![allow(dead_code)]
+#![allow(clippy::needless_return)]
+#![allow(clippy::redundant_static_lifetimes)]
 #![feature(box_syntax)]
 #[macro_use]
 extern crate quick_error;

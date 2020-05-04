@@ -40,22 +40,22 @@ impl Connection {
         Ok(())
     }
 
-    pub fn handle(&mut self, mut stream: TcpStream, handler: Arc<dyn Handler>) {
+    pub fn handle(&mut self, stream: TcpStream, handler: Arc<dyn Handler>) {
         debug!("Read request ...");
 
         self.packets.set_stream(stream);
-        let mut buf = [0u8; 8192];
-        let data = &[0u8; 1];
         // todo tls
         self.write_handshake_v10();
         let pkg = self.packets.read_ephemeral_packet_direct().unwrap();
         self.auth
-            .parse_client_handshake_packet(pkg.as_slice(), false);
+            .parse_client_handshake_packet(pkg.as_slice(), false)
+            .unwrap();
         debug!("{:?}", pkg.as_slice());
         debug!("{}", self.auth);
         // todo tls
         self.packets
-            .write_ok_packet(0, 0, self.greeting.status_flag(), 0);
+            .write_ok_packet(0, 0, self.greeting.status_flag(), 0)
+            .unwrap();
         loop {
             let result: ProtoResult<()> = self.packets.handle_next_command(
                 handler.clone(),
@@ -70,6 +70,6 @@ impl Connection {
     fn write_handshake_v10(&mut self) {
         let pkg = self.greeting.write_handshake_v10(false).unwrap();
         debug!("handshake:{:?}", pkg.as_slice());
-        self.packets.write_packet(pkg.as_slice());
+        self.packets.write_packet(pkg.as_slice()).unwrap();
     }
 }

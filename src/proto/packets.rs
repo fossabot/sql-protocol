@@ -4,8 +4,8 @@ use std::net::TcpStream;
 use std::sync::Arc;
 
 use crate::constants::{
-    CapabilityFlag, PacketType, ServerError, StateError, EOF_PACKET, ERR_PACKET,
-    MAX_PACKET_SIZE, OK_PACKET, SERVER_MORE_RESULTS_EXISTS,
+    CapabilityFlag, PacketType, ServerError, StateError, EOF_PACKET, ERR_PACKET, MAX_PACKET_SIZE,
+    OK_PACKET, SERVER_MORE_RESULTS_EXISTS,
 };
 use crate::errors::{ProtoError, ProtoResult};
 use crate::sql_type::{type_to_mysql, Field, SqlResult, Value};
@@ -25,7 +25,7 @@ trait WriteLenEncode: WriteBytesExt {
     fn write_len_int(&mut self, value: u64) -> io::Result<()>;
     fn write_len_str(&mut self, s: &[u8]) -> io::Result<()> {
         self.write_len_int(s.len() as u64)?;
-        self.write(s)?;
+        self.write_all(s)?;
         Ok(())
     }
 }
@@ -67,12 +67,11 @@ impl Packets {
         }
     }
 
-    pub fn set_stream(&mut self, mut stream: TcpStream) {
+    pub fn set_stream(&mut self, stream: TcpStream) {
         self.stream = Some(stream);
     }
 
     pub fn next(&self) -> ProtoResult<Vec<u8>> {
-        let mut buf = [0; 1];
         Ok(vec![])
     }
 
@@ -172,7 +171,7 @@ impl Packets {
         // Read all packets
         loop {
             let next = self.read_one_packet()?;
-            if next.len() == 0 {
+            if next.is_empty() {
                 break;
             }
             data.extend_from_slice(next.as_slice());
@@ -186,7 +185,7 @@ impl Packets {
     /// Read limit bytes into data.
     fn read_content(&mut self, len: usize, data: &mut [u8]) -> io::Result<()> {
         if let Some(inner) = &mut self.stream {
-            inner.take(len as u64).read(data)?;
+            inner.take(len as u64).read_exact(data)?;
         }
         Ok(())
     }
@@ -201,7 +200,7 @@ impl Packets {
         let inner: &mut TcpStream = self.stream.as_mut().unwrap();
         for f in result.fields {
             let column = Self::write_column_definition(&f)?;
-            inner.write(column.as_slice())?;
+            inner.write_all(column.as_slice())?;
         }
         if self.capability & CapabilityFlag::CapabilityClientDeprecateEOF as u32 == 0 {
             self.write_eof_packet(self.status_flags, 0)?;
@@ -261,12 +260,12 @@ impl Packets {
             } else {
                 let l = val.val.len();
                 data.write_len_int(l as u64)?;
-                data.write(val.val.as_slice())?;
+                data.write_all(val.val.as_slice())?;
             }
         }
 
         let inner: &mut TcpStream = self.stream.as_mut().unwrap();
-        inner.write(data.as_slice())?;
+        inner.write_all(data.as_slice())?;
         Ok(())
     }
 
@@ -286,10 +285,7 @@ impl Packets {
         warnings: u16,
     ) -> io::Result<()> {
         let mut inner = Vec::with_capacity(
-            1 + len_enc_int_size(affected_rows)
-                + len_enc_int_size(last_insert_id)
-                + 2
-                + 2,
+            1 + len_enc_int_size(affected_rows) + len_enc_int_size(last_insert_id) + 2 + 2,
         );
 
         inner.write_u8(EOF_PACKET)?;
@@ -317,12 +313,7 @@ impl Packets {
         if self.capability & CapabilityFlag::CapabilityClientDeprecateEOF as u32 == 0 {
             self.write_eof_packet(flags, warnings)?;
         } else {
-            self.write_ok_packet_with_eof_header(
-                affected_rows,
-                last_insert_id,
-                flags,
-                warnings,
-            )?;
+            self.write_ok_packet_with_eof_header(affected_rows, last_insert_id, flags, warnings)?;
         }
         Ok(())
     }
@@ -345,14 +336,14 @@ impl Packets {
         let mut inner = Vec::with_capacity(1 + 2 + 1 + 5 + err_msg.len());
         inner.write_u8(ERR_PACKET)?;
         inner.write_u16::<LittleEndian>(err_code)?;
-        inner.write_u8('#' as u8)?;
+        inner.write_u8(b'#')?;
         if sql_state.is_empty() {
             sql_state = StateError::SSUnknownSQLState.into();
         }
         assert_eq!(sql_state.len(), 5);
 
-        inner.write(sql_state.as_bytes())?;
-        inner.write(err_msg.as_bytes())?;
+        inner.write_all(sql_state.as_bytes())?;
+        inner.write_all(err_msg.as_bytes())?;
         self.write_packet(inner.as_slice())
     }
 
@@ -364,10 +355,7 @@ impl Packets {
         warnings: u16,
     ) -> io::Result<()> {
         let mut inner = Vec::with_capacity(
-            1 + len_enc_int_size(affected_rows)
-                + len_enc_int_size(last_insert_id)
-                + 2
-                + 2,
+            1 + len_enc_int_size(affected_rows) + len_enc_int_size(last_insert_id) + 2 + 2,
         );
 
         inner.write_u8(OK_PACKET)?;
@@ -396,17 +384,18 @@ impl Packets {
                 header[1] = (pkg_len >> 8) as u8;
                 header[2] = (pkg_len >> 16) as u8;
                 header[3] = self.sequence_id;
-                let n = inner.write(&header)?;
+                // todo check write bytes length
+                inner.write_all(&header)?;
                 //                if n != 4 {
                 //                    // todo
                 //                    panic!("");
                 //                }
-                let n = inner.write(&data[index..index + pkg_len])?;
+                inner.write_all(&data[index..index + pkg_len])?;
                 self.sequence_id += 1;
                 len -= pkg_len;
                 if len == 0 {
                     if pkg_len == MAX_PACKET_SIZE {
-                        let n = inner.write(&[0, 0, 0, self.sequence_id])?;
+                        inner.write_all(&[0, 0, 0, self.sequence_id])?;
                         self.sequence_id += 1;
                     }
                     return Ok(());
@@ -447,22 +436,19 @@ impl Packets {
             }
             PacketType::ComQuery => {
                 let query = parse_com_query(data);
-                let statements = if capability
-                    & CapabilityFlag::CapabilityClientMultiStatements as u32
-                    != 0
-                {
-                    // todo multi statements
-                    vec![query]
-                } else {
-                    vec![query]
-                };
+                let statements =
+                    if capability & CapabilityFlag::CapabilityClientMultiStatements as u32 != 0 {
+                        // todo multi statements
+                        info!("Multi statements");
+                        vec![query]
+                    } else {
+                        vec![query]
+                    };
+
                 let length = statements.len();
                 for (index, sql) in statements.iter().enumerate() {
                     debug!("sql:{}", sql);
-                    let mut more = false;
-                    if index != length - 1 {
-                        more = true;
-                    }
+                    let more = index != length - 1;
                     self.exec_query(handler.clone(), sql, more)?;
                 }
             }
@@ -476,8 +462,7 @@ impl Packets {
                         }
                         1 => {
                             self.capability &=
-                                !(CapabilityFlag::CapabilityClientMultiStatements
-                                    as u32);
+                                !(CapabilityFlag::CapabilityClientMultiStatements as u32);
                         }
                         _ => {
                             self.write_err_packet(
@@ -517,12 +502,12 @@ impl Packets {
     pub fn exec_query(
         &mut self,
         handler: Arc<dyn Handler>,
-        sql: &String,
+        sql: &str,
         more: bool,
     ) -> ProtoResult<()> {
         let mut send_finished = false;
         let mut field_sent = false;
-        let result = handler.com_query(sql, &mut |qr: SqlResult| -> io::Result<()> {
+        handler.com_query(sql, &mut |qr: SqlResult| -> io::Result<()> {
             let mut flags = self.status_flags;
             if more {
                 flags |= SERVER_MORE_RESULTS_EXISTS;
@@ -533,7 +518,7 @@ impl Packets {
             }
             if !field_sent {
                 field_sent = true;
-                return if qr.fields.len() == 0 {
+                return if qr.fields.is_empty() {
                     send_finished = true;
                     // todo warning count
                     self.write_ok_packet(qr.affected_rows, qr.insert_id, flags, 0)
@@ -542,7 +527,7 @@ impl Packets {
                 };
             }
             return self.write_rows(qr);
-        });
+        })?;
         debug!("field_sent:{}, send_finished:{}", field_sent, send_finished);
         if field_sent {
             if !send_finished {
@@ -592,7 +577,7 @@ fn len_enc_int_size(n: u64) -> usize {
     }
 }
 
-fn len_enc_str_size(v: &String) -> usize {
+fn len_enc_str_size(v: &str) -> usize {
     len_enc_int_size(v.len() as u64) + v.len()
 }
 
@@ -603,7 +588,8 @@ mod tests {
     #[test]
     fn test_auth() {
         let mut p = Packets::new();
-        p.write_ok_packet(12, 34, 56, 78);
+        p.write_ok_packet(12, 34, 56, 78).unwrap();
         let c = p.read_packets().unwrap();
+        println!("{:?}", c.as_slice());
     }
 }

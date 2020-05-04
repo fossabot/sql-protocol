@@ -19,7 +19,7 @@ pub trait Handler: Send + Sync {
     // com_query is called when a connection receives a query.
     fn com_query(
         &self,
-        sql: &String,
+        sql: &str,
         callback: &mut dyn FnMut(SqlResult) -> io::Result<()>,
     ) -> io::Result<()>;
 
@@ -58,7 +58,9 @@ impl Listener {
                         conn.handle(stream, handler);
                     });
                 }
-                Err(_) => {}
+                Err(_) => {
+                    error!("Empty stream");
+                }
             }
         }
     }

@@ -41,7 +41,7 @@ pub trait ReadUntil: io::BufRead {
 impl<T: convert::AsRef<[u8]>> ReadUntil for Cursor<T> {
     fn real_read_until(&mut self, byte: u8, buf: &mut Vec<u8>) -> io::Result<usize> {
         let size = self.read_until(byte, buf)?;
-        if buf.len() > 0 {
+        if !buf.is_empty() {
             buf.remove(buf.len() - 1);
         }
         Ok(size)
@@ -89,7 +89,7 @@ impl Auth {
         salt: &[u8],
         database: String,
     ) -> ProtoResult<Vec<u8>> {
-        if database.len() > 0 {
+        if !database.is_empty() {
             capability_flag |= CapabilityFlag::CapabilityClientConnectWithDB as u32;
         } else {
             capability_flag &= !(CapabilityFlag::CapabilityClientConnectWithDB as u32);
@@ -104,20 +104,17 @@ impl Auth {
         buf.write_all(&[0; 23]).expect("Unable to write");
         // username
         buf.write_all(username.as_bytes()).expect("Unable to write");
-        buf.write(&[0; 1]).expect("Unable to write");
+        buf.write_all(&[0; 1]).expect("Unable to write");
 
         let auth_resp = gen_native_password(password, &salt);
-        if (capability_flag & CapabilityFlag::CapabilityClientSecureConnection as u32)
-            > 0
-        {
+        if (capability_flag & CapabilityFlag::CapabilityClientSecureConnection as u32) > 0 {
             buf.write_u8(auth_resp.len() as u8)?;
             buf.write_all(auth_resp.as_slice())?;
         } else {
             buf.write_all(auth_resp.as_slice())?;
             buf.write_u8(0).expect("Unable to write");
         }
-        capability_flag &=
-            !(CapabilityFlag::CapabilityClientPluginAuthLenencClientData as u32);
+        capability_flag &= !(CapabilityFlag::CapabilityClientPluginAuthLenencClientData as u32);
         if (capability_flag & CapabilityFlag::CapabilityClientConnectWithDB as u32) > 0 {
             buf.write_all(database.as_bytes())?;
             buf.write_u8(0).expect("Unable to write");
@@ -146,11 +143,8 @@ impl Auth {
                             | CapabilityFlag::CapabilityClientFoundRows as u32)
                 }
                 // multi statements support
-                if client_flag & CapabilityFlag::CapabilityClientMultiStatements as u32
-                    > 0
-                {
-                    self.capability_flags |=
-                        CapabilityFlag::CapabilityClientMultiStatements as u32;
+                if client_flag & CapabilityFlag::CapabilityClientMultiStatements as u32 > 0 {
+                    self.capability_flags |= CapabilityFlag::CapabilityClientMultiStatements as u32;
                 }
             }
             Err(_) => {
@@ -215,26 +209,20 @@ impl Auth {
                     .extend_from_slice(&buffer[..auth_resp_len]);
             } else {
                 let mut buffer = [0; 20];
-                payload.read(&mut buffer)?;
+                payload.read_exact(&mut buffer)?;
                 self.auth_response.extend_from_slice(&buffer);
                 payload
                     .read_u8()
                     .map_err(|_| ProtoError::ReadAuthResponseError)?;
             }
             // Parse database name
-            if (self.capability_flags
-                & CapabilityFlag::CapabilityClientConnectWithDB as u32)
-                != 0
-            {
+            if (self.capability_flags & CapabilityFlag::CapabilityClientConnectWithDB as u32) != 0 {
                 payload
                     .real_read_until(0x00, self.database.as_mut_vec())
                     .map_err(|_| ProtoError::ReadDatabaseError)?;
             }
             // Parse plugin name
-            if (self.capability_flags
-                & CapabilityFlag::CapabilityClientPluginAuth as u32)
-                != 0
-            {
+            if (self.capability_flags & CapabilityFlag::CapabilityClientPluginAuth as u32) != 0 {
                 payload
                     .real_read_until(0x00, self.auth_method.as_mut_vec())
                     .map_err(|_| ProtoError::ReadPluginError)?;
@@ -244,9 +232,7 @@ impl Auth {
                 self.auth_method = String::from(MYSQL_NATIVE_PASSWORD);
             }
             // Decode connection attributes
-            if self.capability_flags & CapabilityFlag::CapabilityClientConnAttr as u32
-                != 0
-            {
+            if self.capability_flags & CapabilityFlag::CapabilityClientConnAttr as u32 != 0 {
                 // todo decode connection attributes
             }
         }
@@ -308,10 +294,7 @@ impl Display for Auth {
 #[cfg(test)]
 mod tests {
     use crate::constants::CapabilityFlag;
-    use crate::constants::{
-        DEFAULT_CLIENT_CAPABILITY, DEFAULT_SALT, DEFAULT_SERVER_CAPABILITY,
-        MYSQL_NATIVE_PASSWORD,
-    };
+    use crate::constants::{DEFAULT_CLIENT_CAPABILITY, DEFAULT_SALT, MYSQL_NATIVE_PASSWORD};
     use crate::errors::ProtoError;
     use crate::proto::auth::gen_native_password;
     use crate::proto::Auth;
@@ -319,13 +302,12 @@ mod tests {
     #[test]
     fn test_auth() {
         let data = &[
-            0x8d, 0xa6, 0xff, 0x01, 0x00, 0x00, 0x00, 0x01, 0x21, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x72, 0x6f, 0x6f, 0x74,
-            0x00, 0x14, 0x0e, 0xb4, 0xdd, 0xb5, 0x5b, 0x64, 0xf8, 0x54, 0x40, 0xfd,
-            0xf3, 0x45, 0xfa, 0x37, 0x12, 0x20, 0x20, 0xda, 0x38, 0xaa, 0x61, 0x62,
-            0x63, 0x00, 0x6d, 0x79, 0x73, 0x71, 0x6c, 0x5f, 0x6e, 0x61, 0x74, 0x69,
-            0x76, 0x65, 0x5f, 0x70, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64, 0x00,
+            0x8d, 0xa6, 0xff, 0x01, 0x00, 0x00, 0x00, 0x01, 0x21, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x72, 0x6f, 0x6f, 0x74, 0x00, 0x14, 0x0e, 0xb4, 0xdd, 0xb5,
+            0x5b, 0x64, 0xf8, 0x54, 0x40, 0xfd, 0xf3, 0x45, 0xfa, 0x37, 0x12, 0x20, 0x20, 0xda,
+            0x38, 0xaa, 0x61, 0x62, 0x63, 0x00, 0x6d, 0x79, 0x73, 0x71, 0x6c, 0x5f, 0x6e, 0x61,
+            0x74, 0x69, 0x76, 0x65, 0x5f, 0x70, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64, 0x00,
         ];
         let mut auth = Auth::new();
         auth.parse_client_handshake_packet(data, false).unwrap();
@@ -338,8 +320,8 @@ mod tests {
         assert_eq!(
             auth.auth_response,
             vec![
-                0x0e, 0xb4, 0xdd, 0xb5, 0x5b, 0x64, 0xf8, 0x54, 0x40, 0xfd, 0xf3, 0x45,
-                0xfa, 0x37, 0x12, 0x20, 0x20, 0xda, 0x38, 0xaa
+                0x0e, 0xb4, 0xdd, 0xb5, 0x5b, 0x64, 0xf8, 0x54, 0x40, 0xfd, 0xf3, 0x45, 0xfa, 0x37,
+                0x12, 0x20, 0x20, 0xda, 0x38, 0xaa
             ]
         );
     }
@@ -386,10 +368,9 @@ mod tests {
     fn test_unpack() {
         let mut expected = Auth::new();
         expected.character_set = 0x02;
-        expected.capability_flags = DEFAULT_CLIENT_CAPABILITY
-            | CapabilityFlag::CapabilityClientConnectWithDB as u32;
-        expected.auth_response =
-            gen_native_password(String::from("password"), DEFAULT_SALT);
+        expected.capability_flags =
+            DEFAULT_CLIENT_CAPABILITY | CapabilityFlag::CapabilityClientConnectWithDB as u32;
+        expected.auth_response = gen_native_password(String::from("password"), DEFAULT_SALT);
         expected.database = "test_db".to_string();
         expected.user = "root".to_string();
         expected.auth_method = MYSQL_NATIVE_PASSWORD.to_string();
@@ -404,7 +385,7 @@ mod tests {
             "test_db".to_string(),
         );
         actual
-            .parse_client_handshake_packet(tmp.as_slice(), false)
+            .parse_client_handshake_packet(tmp.unwrap().as_slice(), false)
             .unwrap();
         assert_eq!(actual, expected);
     }
@@ -414,8 +395,7 @@ mod tests {
         let mut expected = Auth::new();
         expected.character_set = 0x02;
         expected.capability_flags = DEFAULT_CLIENT_CAPABILITY;
-        expected.auth_response =
-            gen_native_password(String::from("password"), DEFAULT_SALT);
+        expected.auth_response = gen_native_password(String::from("password"), DEFAULT_SALT);
         expected.database = "".to_string();
         expected.user = "root".to_string();
         expected.auth_method = MYSQL_NATIVE_PASSWORD.to_string();
@@ -430,7 +410,7 @@ mod tests {
             "".to_string(),
         );
         actual
-            .parse_client_handshake_packet(tmp.as_slice(), false)
+            .parse_client_handshake_packet(tmp.unwrap().as_slice(), false)
             .unwrap();
         assert_eq!(actual, expected);
     }
@@ -439,8 +419,8 @@ mod tests {
     fn test_unpack_without_pwd() {
         let mut expected = Auth::new();
         expected.character_set = 0x02;
-        expected.capability_flags = DEFAULT_CLIENT_CAPABILITY
-            | CapabilityFlag::CapabilityClientConnectWithDB as u32;
+        expected.capability_flags =
+            DEFAULT_CLIENT_CAPABILITY | CapabilityFlag::CapabilityClientConnectWithDB as u32;
         expected.auth_response = gen_native_password(String::from(""), DEFAULT_SALT);
         expected.database = "db".to_string();
         expected.user = "root".to_string();
@@ -456,7 +436,7 @@ mod tests {
             "db".to_string(),
         );
         actual
-            .parse_client_handshake_packet(tmp.as_slice(), false)
+            .parse_client_handshake_packet(tmp.unwrap().as_slice(), false)
             .unwrap();
         assert_eq!(actual, expected);
     }
@@ -468,18 +448,15 @@ mod tests {
         expected.capability_flags = DEFAULT_CLIENT_CAPABILITY
             & !(CapabilityFlag::CapabilityClientSecureConnection as u32)
             & !(CapabilityFlag::CapabilityClientPluginAuthLenencClientData as u32);
-        expected.capability_flags |=
-            CapabilityFlag::CapabilityClientConnectWithDB as u32;
-        expected.auth_response =
-            gen_native_password(String::from("password"), DEFAULT_SALT);
+        expected.capability_flags |= CapabilityFlag::CapabilityClientConnectWithDB as u32;
+        expected.auth_response = gen_native_password(String::from("password"), DEFAULT_SALT);
         expected.database = "test_db".to_string();
         expected.user = "root".to_string();
         expected.auth_method = MYSQL_NATIVE_PASSWORD.to_string();
 
         let mut actual = Auth::new();
         let tmp = Auth::write_handshake_resp(
-            DEFAULT_CLIENT_CAPABILITY
-                & !(CapabilityFlag::CapabilityClientSecureConnection as u32),
+            DEFAULT_CLIENT_CAPABILITY & !(CapabilityFlag::CapabilityClientSecureConnection as u32),
             0x02,
             "root".to_string(),
             "password".to_string(),
@@ -487,7 +464,7 @@ mod tests {
             "test_db".to_string(),
         );
         actual
-            .parse_client_handshake_packet(tmp.as_slice(), false)
+            .parse_client_handshake_packet(tmp.unwrap().as_slice(), false)
             .unwrap();
         assert_eq!(actual, expected);
     }
